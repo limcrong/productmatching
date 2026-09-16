@@ -5,12 +5,13 @@ __pycache__/
 *.ipynb_checkpoints
 
 # Data & Large Files
-data/raw/
+data/raw/*
+!data/raw/.gitkeep
 data/shopee-product-matching.zip
-data/thumbnails/*.jpg
-data/thumbnails/*.png
-data/embeddings/*.npy
-data/embeddings/*.pkl
+data/thumbnails/*
+!data/thumbnails/.gitkeep
+data/embeddings/*
+!data/embeddings/.gitkeep
 
 # Environment & IDE
 .vscode/
@@ -18,3 +19,5 @@ data/embeddings/*.pkl
 *.log
 
 .env
+!.env.example
+
