@@ -11,7 +11,11 @@ from src.config import (
     TEST_DEMO_SPLIT_CSV,
     EMBEDDINGS_DIR,
 )
-from src.data.loader import load_data, get_ground_truth_map
+from src.data.loader import (
+    load_data,
+    get_ground_truth_map,
+    ensure_thumbnails_extracted,
+)
 from src.retrieval.matching import (
     categorize_and_filter_candidates,
     apply_connected_components,
@@ -52,6 +56,7 @@ def get_active_dataset(s_name: str):
 
 
 active_df, gt_map = get_active_dataset(split_name)
+ensure_thumbnails_extracted()
 
 if active_df is None:
     st.warning(
@@ -99,6 +104,13 @@ def get_fitted_tfidf(titles: tuple):
 
 
 tfidf_encoder, tfidf_matrix = get_fitted_tfidf(tuple(active_df["title"].tolist()))
+
+if ("Multimodal" in model_choice or "Embeddings" in model_choice) and (text_emb is None or image_emb is None):
+    st.info(
+        "💡 **Notice:** Offline deep learning `.npy` embeddings not detected in `data/embeddings/`. "
+        "The system is currently running on live **TF-IDF sparse cosine similarity** as a fallback. "
+        "Run the Kaggle GPU pipeline to export `test_text_embeddings.npy` and `test_image_embeddings.npy` to activate multimodal vector scoring."
+    )
 
 # Reference product selection
 st.subheader("1️⃣ Select Reference Product")

@@ -10,6 +10,7 @@ data/raw/*
 data/shopee-product-matching.zip
 data/thumbnails/*
 !data/thumbnails/.gitkeep
+!data/demo_thumbnails.zip
 data/embeddings/*
 !data/embeddings/.gitkeep
 

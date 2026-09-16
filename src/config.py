@@ -12,6 +12,7 @@ EMBEDDINGS_DIR = DATA_DIR / "embeddings"
 THUMBNAILS_DIR = DATA_DIR / "thumbnails"
 
 ZIP_PATH = DATA_DIR / "shopee-product-matching.zip"
+DEMO_THUMBNAILS_ZIP = DATA_DIR / "demo_thumbnails.zip"
 
 # Raw file paths
 RAW_TRAIN_CSV = RAW_DATA_DIR / "train.csv"
