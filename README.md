@@ -75,19 +75,33 @@ productmatching/
 
 ### 1. Environment Setup
 ```powershell
+# Clone the repository
+git clone https://github.com/limcrong/productmatching.git
+cd productmatching
+
+# Create and activate virtual environment
 python -m venv .venv
-.\.venv\Scripts\activate
+.\.venv\Scripts\activate      # On Linux/macOS: source .venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Configure secrets / API tokens
+copy .env.example .env        # On Linux/macOS: cp .env.example .env
 ```
 
-### 2. Extract Splits & Generate Demo Thumbnails
-Extracts CSV splits and generates compact 224x224 thumbnails only for the held-out test/demo set:
-```powershell
-python scripts/extract_data.py
-```
+### 2. Data Setup & Multi-Device Guide
 
-### 3. Run Experiments
-Evaluate Experiment 0 (TF-IDF Baseline):
+| Data Path | Status in Git | Can Generate? | Instructions |
+| :--- | :--- | :--- | :--- |
+| **`data/processed/*.csv`** | ✅ **Tracked in Git** | Already generated | Available immediately upon `git clone` or `git pull`. No action needed! |
+| **`experiments/results.json`** | ✅ **Tracked in Git** | Already logged | Available immediately to render benchmark dashboards. |
+| **`data/thumbnails/`** | ❌ Ignored (`.jpg`) | **Yes** (~56 MB) | **Option A (Fastest):** Direct copy `data/thumbnails/` from your other device via USB/AirDrop/Drive.<br>**Option B (Local Generation):** Download `shopee-product-matching.zip` into `data/` and run `python scripts/extract_data.py`.<br>*(Note: App still runs without thumbnails using fallback placeholders).* |
+| **`data/embeddings/`** | ❌ Ignored (`.npy`) | **Yes** (100% reproducible) | Generated on-the-fly or via pipeline scripts when computing representations. |
+| **`data/shopee-product-matching.zip`** | ❌ Ignored (~1.8 GB) | Download from Kaggle | Only needed if generating thumbnails locally or training vision CNNs from raw images.<br>`kaggle competitions download -c shopee-product-matching -p data/` |
+
+### 3. Run Baseline Experiment (Exp 0: TF-IDF)
+Evaluate TF-IDF classical baseline (works immediately with tracked processed CSVs):
 ```powershell
 python scripts/run_experiments.py --experiment 0
 ```
@@ -96,6 +110,7 @@ python scripts/run_experiments.py --experiment 0
 ```powershell
 streamlit run app/app.py
 ```
+
 
 ---
 
