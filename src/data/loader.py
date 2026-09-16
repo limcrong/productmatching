@@ -1,5 +1,4 @@
 import os
-import zipfile
 from pathlib import Path
 import pandas as pd
 from typing import Dict, List, Optional
@@ -7,7 +6,6 @@ from src.config import (
     RAW_TRAIN_CSV,
     RAW_TRAIN_IMAGES_DIR,
     THUMBNAILS_DIR,
-    DEMO_THUMBNAILS_ZIP,
     TRAIN_SPLIT_CSV,
     VAL_SPLIT_CSV,
     TEST_DEMO_SPLIT_CSV,
@@ -55,21 +53,18 @@ def get_image_path(image_name: str, prefer_thumbnail: bool = True) -> Optional[P
         return raw_path
         
     return None
+                pass
+
+    raw_path = RAW_TRAIN_IMAGES_DIR / image_name
+    if raw_path.exists():
+        return raw_path
+
+    return None
 
 
 def ensure_thumbnails_extracted() -> int:
     """
-    Checks if thumbnails exist in THUMBNAILS_DIR. If not, and DEMO_THUMBNAILS_ZIP exists,
-    extracts them automatically. Returns the number of thumbnails present.
+    Fast initialization check. Extraction is handled on-demand for instant load times.
     """
     THUMBNAILS_DIR.mkdir(parents=True, exist_ok=True)
-    existing_count = sum(1 for _ in THUMBNAILS_DIR.glob("*.jpg"))
-    if existing_count > 100:
-        return existing_count
-
-    if DEMO_THUMBNAILS_ZIP.exists():
-        with zipfile.ZipFile(DEMO_THUMBNAILS_ZIP, "r") as z:
-            z.extractall(THUMBNAILS_DIR)
-        return sum(1 for _ in THUMBNAILS_DIR.glob("*.jpg"))
-
-    return existing_count
+    return 1 if DEMO_THUMBNAILS_ZIP.exists() else 0

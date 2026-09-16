@@ -1,12 +1,5 @@
-import sys
-from pathlib import Path
-
-# Ensure repository root is in sys.path for Streamlit Cloud execution
-ROOT_DIR = Path(__file__).resolve().parent.parent
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
-
 import streamlit as st
+from pathlib import Path
 import pandas as pd
 
 from src.config import (
@@ -15,10 +8,6 @@ from src.config import (
     TEST_DEMO_SPLIT_CSV,
     EXPERIMENTS_RESULTS_JSON,
 )
-from src.data.loader import ensure_thumbnails_extracted
-
-# Unpack demo thumbnails if deployed as an archive on Streamlit Cloud
-ensure_thumbnails_extracted()
 
 st.set_page_config(
     page_title="Multimodal Product Matching",

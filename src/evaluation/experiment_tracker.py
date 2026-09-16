@@ -36,20 +36,23 @@ class ExperimentTracker:
         approach_type: str,
         model_name: str,
         hyperparameters: Dict[str, Any],
-        val_metrics: Dict[str, float],
+        val_metrics: Optional[Dict[str, float]] = None,
         test_metrics: Optional[Dict[str, float]] = None,
         notes: str = "",
+        validation_metrics: Optional[Dict[str, float]] = None,
+        **kwargs,
     ) -> Dict[str, Any]:
         """
         Logs a single experiment result. If experiment_id exists, updates it.
         """
+        effective_val = val_metrics if val_metrics is not None else (validation_metrics or {})
         record = {
             "experiment_id": experiment_id,
             "name": name,
             "approach_type": approach_type,  # e.g. "Baseline", "Text DL", "Image DL", "Multimodal", "Optimized"
             "model_name": model_name,
             "hyperparameters": hyperparameters,
-            "validation_metrics": val_metrics,
+            "validation_metrics": effective_val,
             "test_metrics": test_metrics or {},
             "notes": notes,
             "timestamp": datetime.now().isoformat(),
