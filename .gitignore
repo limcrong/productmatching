@@ -1,0 +1,20 @@
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.ipynb_checkpoints
+
+# Data & Large Files
+data/raw/
+data/shopee-product-matching.zip
+data/thumbnails/*.jpg
+data/thumbnails/*.png
+data/embeddings/*.npy
+data/embeddings/*.pkl
+
+# Environment & IDE
+.vscode/
+.idea/
+*.log
+
+.env
