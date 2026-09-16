@@ -1,0 +1,26 @@
+[
+  {
+    "experiment_id": "exp_00",
+    "name": "Experiment 0 \u2014 TF-IDF Classical Baseline",
+    "approach_type": "Classical ML",
+    "model_name": "TfidfVectorizer (bigrams, sublinear TF)",
+    "hyperparameters": {
+      "threshold": 0.45,
+      "max_features": 25000
+    },
+    "validation_metrics": {
+      "mean_precision": 0.8478197928288619,
+      "mean_recall": 0.7417910207128253,
+      "mean_f1": 0.7406133174404199,
+      "num_queries": 5141
+    },
+    "test_metrics": {
+      "mean_precision": 0.8423973009263478,
+      "mean_recall": 0.7434411991011607,
+      "mean_f1": 0.740945654138017,
+      "num_queries": 5138
+    },
+    "notes": "Classical NLP baseline using sparse cosine similarity. Vocabulary fitted strictly on train split.",
+    "timestamp": "2026-09-16T17:10:23.009342"
+  }
+]
