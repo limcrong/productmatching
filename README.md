@@ -38,20 +38,24 @@ Based on the [Kaggle Shopee Product Matching dataset](https://www.kaggle.com/com
 
 ```
 productmatching/
+├── .gitattributes                       # Git LFS tracking for demo_thumbnails.zip
 ├── data/
-│   ├── shopee-product-matching.zip      # Raw dataset archive
+│   ├── demo_thumbnails.zip              # Packaged test/demo thumbnails (Git LFS)
+│   ├── shopee-product-matching.zip      # Raw dataset archive (optional, Kaggle)
 │   ├── raw/                             # Extracted train.csv / test.csv
 │   ├── processed/                       # train_split.csv, val_split.csv, test_demo_split.csv
-│   ├── thumbnails/                      # 224x224 thumbnails for test/demo split only
+│   ├── thumbnails/                      # 224x224 thumbnails (extracted on-demand)
 │   └── embeddings/                      # Precomputed .npy embeddings
 ├── app/                                 # Streamlit Multi-Page Demo
+│   ├── __init__.py                      # Package marker for cloud/local execution
 │   ├── app.py                           # Landing & System Architecture
 │   ├── pages/
 │   │   ├── 1_Product_Matcher.py         # Mode 1: Core Dataset Product Matcher
 │   │   ├── 2_Experiment_Results.py      # Quantitative Benchmarks & Error Analysis
 │   │   └── 3_Live_Matcher.py            # Mode 2: Consumer-Facing Web Search Stub
 │   └── components/
-│       ├── product_card.py              # Status badges & product cards
+│       ├── __init__.py                  # Component package marker
+│       ├── product_card.py              # Status badges & on-demand image loader
 │       └── sidebar_controls.py          # Interactive sliders & dropdowns
 ├── src/                                 # Core Python Package
 │   ├── config.py                        # Constants & directory configurations
@@ -90,15 +94,23 @@ pip install -r requirements.txt
 copy .env.example .env        # On Linux/macOS: cp .env.example .env
 ```
 
-### 2. Data Setup & Multi-Device Guide
+### 2. Data Setup & Git LFS
 
-| Data Path | Status in Git | Can Generate? | Instructions |
-| :--- | :--- | :--- | :--- |
-| **`data/processed/*.csv`** | ✅ **Tracked in Git** | Already generated | Available immediately upon `git clone` or `git pull`. No action needed! |
-| **`experiments/results.json`** | ✅ **Tracked in Git** | Already logged | Available immediately to render benchmark dashboards. |
-| **`data/thumbnails/`** | ❌ Ignored (`.jpg`) | **Yes** (~56 MB) | **Option A (Fastest):** Direct copy `data/thumbnails/` from your other device via USB/AirDrop/Drive.<br>**Option B (Local Generation):** Download `shopee-product-matching.zip` into `data/` and run `python scripts/extract_data.py`.<br>*(Note: App still runs without thumbnails using fallback placeholders).* |
-| **`data/embeddings/`** | ❌ Ignored (`.npy`) | **Yes** (100% reproducible) | Generated on-the-fly or via pipeline scripts when computing representations. |
-| **`data/shopee-product-matching.zip`** | ❌ Ignored (~1.8 GB) | Download from Kaggle | Only needed if generating thumbnails locally or training vision CNNs from raw images.<br>`kaggle competitions download -c shopee-product-matching -p data/` |
+| Data Path | Status in Git | Description / Instructions |
+| :--- | :--- | :--- |
+| **`data/processed/*.csv`** | ✅ **Tracked in Git** | Split CSVs available immediately upon `git clone`. Zero configuration required. |
+| **`experiments/results.json`** | ✅ **Tracked in Git** | Academic benchmark records across experimental stages for instant dashboard rendering. |
+| **`data/demo_thumbnails.zip`** | 📦 **Tracked via Git LFS** | All 4,880 test/demo product images (55 MB). Extracted automatically and on-demand by the app. |
+| **`data/thumbnails/`** | ⚡ **On-Demand Cache** | Extracted dynamically in milliseconds as products are rendered in the UI. |
+| **`data/embeddings/`** | ❌ Ignored (`.npy`) | Precomputed vectors. Generated via `kaggle_pipeline.py` or computed locally. |
+| **`data/shopee-product-matching.zip`** | ❌ Ignored (~1.8 GB) | Full raw dataset (optional, only if retraining vision CNNs from raw full dataset). |
+
+> [!TIP]
+> **Git LFS**: When cloning to a new machine, ensure Git LFS is installed to fetch the demo thumbnails:
+> ```bash
+> git lfs install
+> git lfs pull
+> ```
 
 ### 3. Run Baseline Experiment (Exp 0: TF-IDF)
 Evaluate TF-IDF classical baseline (works immediately with tracked processed CSVs):
@@ -106,10 +118,18 @@ Evaluate TF-IDF classical baseline (works immediately with tracked processed CSV
 python scripts/run_experiments.py --experiment 0
 ```
 
-### 4. Launch Streamlit Demo
+### 4. Launch Streamlit Demo (Local)
 ```powershell
 streamlit run app/app.py
 ```
+
+### 5. Streamlit Community Cloud Deployment
+The repository is fully configured for continuous deployment on [Streamlit Community Cloud](https://share.streamlit.io/):
+- **Repository**: `limcrong/productmatching`
+- **Branch**: `main`
+- **Main file path**: `app/app.py`
+- Automatic `sys.path` package resolution is configured in `app/app.py` and page scripts.
+- Git LFS pulls `data/demo_thumbnails.zip` automatically, and the app extracts thumbnails on-demand without startup latency.
 
 
 ---
