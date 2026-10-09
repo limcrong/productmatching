@@ -1,6 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set, Tuple
-import numpy as np
+from typing import Dict, List, Optional, Set
 import pandas as pd
 
 
@@ -33,88 +32,6 @@ def apply_threshold(
         for pid, score in zip(candidate_ids, candidate_scores)
         if score >= threshold
     ]
-
-
-def apply_reciprocal_nn(
-    query_pid: str,
-    retrieved_pids: List[str],
-    all_pids: List[str],
-    sim_matrix: np.ndarray,
-    threshold: float,
-    pid_to_idx: Dict[str, int],
-) -> List[str]:
-    """
-    Hypothesis 5A: Reciprocal Nearest Neighbors.
-    Requires mutual agreement above threshold:
-    Listing B is accepted as a match for A only if:
-    Sim(A, B) >= threshold AND Sim(B, A) >= threshold.
-    In symmetric similarity matrices, this is equivalent to standard thresholding,
-    but in k-NN top-k candidate lists, it enforces that A in TopK(B) and B in TopK(A).
-    """
-    q_idx = pid_to_idx.get(query_pid)
-    if q_idx is None:
-        return [query_pid]
-
-    filtered = []
-    for cand_pid in retrieved_pids:
-        if cand_pid == query_pid:
-            filtered.append(cand_pid)
-            continue
-        c_idx = pid_to_idx.get(cand_pid)
-        if c_idx is not None:
-            sim_ab = sim_matrix[q_idx, c_idx]
-            sim_ba = sim_matrix[c_idx, q_idx]
-            if sim_ab >= threshold and sim_ba >= threshold:
-                filtered.append(cand_pid)
-    return filtered
-
-
-def apply_connected_components(
-    predictions: Dict[str, List[str]]
-) -> Dict[str, List[str]]:
-    """
-    Hypothesis 5B: Transitive Graph Grouping (Connected Components).
-    If A matches B and B matches C, merges {A, B, C} into a single connected component.
-    Warning: May cause false-positive chaining if threshold is too low.
-    """
-    # Build adjacency list
-    adj: Dict[str, Set[str]] = {}
-    for pid, neighbors in predictions.items():
-        if pid not in adj:
-            adj[pid] = set()
-        adj[pid].add(pid)
-        for n in neighbors:
-            if n not in adj:
-                adj[n] = set()
-            adj[pid].add(n)
-            adj[n].add(pid)
-
-    # Find connected components via BFS
-    visited = set()
-    components: Dict[str, List[str]] = {}
-
-    for node in adj:
-        if node not in visited:
-            component = []
-            queue = [node]
-            visited.add(node)
-            while queue:
-                curr = queue.pop(0)
-                component.append(curr)
-                for neighbor in adj[curr]:
-                    if neighbor not in visited:
-                        visited.add(neighbor)
-                        queue.append(neighbor)
-            # Assign component to all members
-            for member in component:
-                components[member] = component
-
-    # Ensure all original keys are preserved
-    for pid in predictions:
-        if pid not in components:
-            components[pid] = [pid]
-
-    return components
 
 
 def categorize_and_filter_candidates(
@@ -191,10 +108,14 @@ def categorize_and_filter_candidates(
     similar_rejected.sort(key=lambda x: x.score, reverse=True)
     similar_rejected = similar_rejected[:max_rejected_to_show]
 
+    # Include true matches from ground_truth that were not in the retrieved set at all (score 0.0)
+    # (Note: we check if any true matches were completely unretrieved)
     missed_matches = missed_retrieved
 
     # Compute per-query precision, recall, F1
+    # Predicted set includes all items in matched_products
     predicted_pids = {m.posting_id for m in matched}
+    # If the query itself was not retrieved, add it (self-match)
     if query_posting_id not in predicted_pids and any(m.score >= threshold for m in matched):
         predicted_pids.add(query_posting_id)
 
