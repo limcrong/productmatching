@@ -1,0 +1,134 @@
+[
+  {
+    "category": "fusion_recovered_fn",
+    "title_query": "TINTA CANON REFILL IP2770 IP2870 IP1980 MP287 E400 E410 E460 E480 MP237  Mp258 E500 E510 E560 MX328",
+    "image_query": "0b438a02fc70c3a002f6af96a96370ad.jpg",
+    "title_candidate": "Tinta Epson Yellow 100ml  Tinta Dye Base Epson Tutup Model Kerucut Murah",
+    "image_candidate": "0b438a02fc70c3a002f6af96a96370ad.jpg",
+    "s_text": 0.382,
+    "s_img": 1.0,
+    "s_fused": 0.962,
+    "explanation": "One modality was noisy/incomplete, but synergistic multimodal fusion recovered the true product match."
+  },
+  {
+    "category": "fusion_recovered_fn",
+    "title_query": "Obeng Set Multifungsi 31 in 1 Serbaguna - GBU 730",
+    "image_query": "0cf8cd77025624f680786b29eee460b7.jpg",
+    "title_candidate": "Obeng set toolkit 31in1 / obeng service mini 31 in 1",
+    "image_candidate": "0cf8cd77025624f680786b29eee460b7.jpg",
+    "s_text": 0.476,
+    "s_img": 1.0,
+    "s_fused": 0.984,
+    "explanation": "One modality was noisy/incomplete, but synergistic multimodal fusion recovered the true product match."
+  },
+  {
+    "category": "fusion_recovered_fn",
+    "title_query": "Obeng Set Multifungsi 31 in 1 Serbaguna Lengkap Praktis Murah Alat Tukang Otomotif Bengkel Perkakas",
+    "image_query": "0cf8cd77025624f680786b29eee460b7.jpg",
+    "title_candidate": "Obeng set toolkit 31in1 / obeng service mini 31 in 1",
+    "image_candidate": "0cf8cd77025624f680786b29eee460b7.jpg",
+    "s_text": 0.366,
+    "s_img": 1.0,
+    "s_fused": 0.956,
+    "explanation": "One modality was noisy/incomplete, but synergistic multimodal fusion recovered the true product match."
+  },
+  {
+    "category": "fusion_recovered_fn",
+    "title_query": "SERUM SCARLETT ACNE & BRIGHTLY- SERUM WAJAH SCARLETT ORIGINAL BPOM",
+    "image_query": "0e9286fbfd1a0c00287c2c93a4738b9a.jpg",
+    "title_candidate": "Scarlett Whitening Brightly Ever After Serum",
+    "image_candidate": "0ee29d56042b2ff25d171b0f090463a8.jpg",
+    "s_text": 0.673,
+    "s_img": 0.417,
+    "s_fused": 0.807,
+    "explanation": "One modality was noisy/incomplete, but synergistic multimodal fusion recovered the true product match."
+  },
+  {
+    "category": "fusion_recovered_fn",
+    "title_query": "KODOMO - BABY WIPES 50 + 50 SHEETS / BUNDLING BUY 1 EXTRA 1",
+    "image_query": "1c722d058280a6f728f2048f90c6ea25.jpg",
+    "title_candidate": "Tissue Basah Kodomo PROMO isi 50 sheet (Buy 1 Get 1) 100% Original",
+    "image_candidate": "1c722d058280a6f728f2048f90c6ea25.jpg",
+    "s_text": 0.515,
+    "s_img": 1.0,
+    "s_fused": 0.989,
+    "explanation": "One modality was noisy/incomplete, but synergistic multimodal fusion recovered the true product match."
+  },
+  {
+    "category": "fusion_recovered_fn",
+    "title_query": "JILBAB ANAK ELMO  / JILBAB ANAK BAYI / HIJAB ANAK / JILBAB ANAK ANAK  / JILBAB ANAK / JILBAB BAYI",
+    "image_query": "216f1ac9d0ece298beba3d26d83e83aa.jpg",
+    "title_candidate": "JILBAB/HIJAB ANAK ELMO EMOTICON JERSEY",
+    "image_candidate": "2229d4f7214e4ea8793b9d3aadde20a3.jpg",
+    "s_text": 0.783,
+    "s_img": 0.417,
+    "s_fused": 0.922,
+    "explanation": "One modality was noisy/incomplete, but synergistic multimodal fusion recovered the true product match."
+  },
+  {
+    "category": "fusion_recovered_fn",
+    "title_query": "( 1KG MUAT 5)  SAIDAH NIQAB FISIK BERGO HIJAB JILBAB KHIMAR INSTANT KHIMAR KERUDUNG SEGIEMPAT  100",
+    "image_query": "24b1dfbb1eb3bacdbba59b8b29a5c240.jpg",
+    "title_candidate": "Hijab instan Niqab/niqob jersey/Hijab masker instan jersey ukuran STANDAR",
+    "image_candidate": "2538f9f6cfb66f028b4ab70d65167b78.jpg",
+    "s_text": 0.52,
+    "s_img": 0.612,
+    "s_fused": 0.817,
+    "explanation": "One modality was noisy/incomplete, but synergistic multimodal fusion recovered the true product match."
+  },
+  {
+    "category": "fusion_recovered_fn",
+    "title_query": "Sepatu Casual dengan Bahan Katun dan Bergaya Sporty untuk Laki-Laki / Perempuan",
+    "image_query": "28afdb60d2872dad4c3c3f8cfd6a0995.jpg",
+    "title_candidate": "TFbaby LED Sepatu Sport First Walker Casual Bayi Laki-laki / Perempuan Bahan Katun dengan Lampu",
+    "image_candidate": "28afdb60d2872dad4c3c3f8cfd6a0995.jpg",
+    "s_text": 0.517,
+    "s_img": 1.0,
+    "s_fused": 0.989,
+    "explanation": "One modality was noisy/incomplete, but synergistic multimodal fusion recovered the true product match."
+  },
+  {
+    "category": "fusion_recovered_fn",
+    "title_query": "Enblanc baby wipes tissue basah bayi tisue korea LAV",
+    "image_query": "29e36d74db7c0ce851955253730ff1ec.jpg",
+    "title_candidate": "ENBLANC INDIPINK Baby Wipes Tissue Basah Antiseptic Bayi Anak Natural Organic Korea",
+    "image_candidate": "2abbfbdad9d36fb83b3550edb224580e.jpg",
+    "s_text": 0.8,
+    "s_img": 0.388,
+    "s_fused": 0.917,
+    "explanation": "One modality was noisy/incomplete, but synergistic multimodal fusion recovered the true product match."
+  },
+  {
+    "category": "fusion_recovered_fn",
+    "title_query": "Enblanc baby wipes tissue basah bayi tisue korea LAVB",
+    "image_query": "29e36d74db7c0ce851955253730ff1ec.jpg",
+    "title_candidate": "ENBLANC INDIPINK Baby Wipes Tissue Basah Antiseptic Bayi Anak Natural Organic Korea",
+    "image_candidate": "2abbfbdad9d36fb83b3550edb224580e.jpg",
+    "s_text": 0.794,
+    "s_img": 0.388,
+    "s_fused": 0.912,
+    "explanation": "One modality was noisy/incomplete, but synergistic multimodal fusion recovered the true product match."
+  },
+  {
+    "category": "fusion_recovered_fn",
+    "title_query": "softcase Oppo A3s A1k A5 A9 2020 A7 F9 A5s A31 A52 A92 A37 A53 A83 F1s F11 Pro Reno 2 2z 2f SB705",
+    "image_query": "2d504bcc529cd53130bbd3aa5bd1dda9.jpg",
+    "title_candidate": "softcase Realme C1 C2 C3 U1 2 2 Pro 3 Pro 5 5i 5s Pro 6 Pro X Xt C11 C12 C15 9C 7 SB703",
+    "image_candidate": "2d504bcc529cd53130bbd3aa5bd1dda9.jpg",
+    "s_text": 0.502,
+    "s_img": 1.0,
+    "s_fused": 0.987,
+    "explanation": "One modality was noisy/incomplete, but synergistic multimodal fusion recovered the true product match."
+  },
+  {
+    "category": "fusion_recovered_fn",
+    "title_query": "3D Stiker Dinding Rumah Untuk Anak: LED Stiker Bentuk Bintang Dapat Menyala Dalam Gelap",
+    "image_query": "3254397fedbdae173c6773bbea0ac279.jpg",
+    "title_candidate": "MIR\\xe2\\x9d\\xa4 Stiker Dinding dengan Gambar Bintang Warna Menyala dalam Gelap untuk Dekorasi Kamar Anak",
+    "image_candidate": "3254397fedbdae173c6773bbea0ac279.jpg",
+    "s_text": 0.474,
+    "s_img": 1.0,
+    "s_fused": 0.984,
+    "explanation": "One modality was noisy/incomplete, but synergistic multimodal fusion recovered the true product match."
+  }
+]

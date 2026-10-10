@@ -5,22 +5,198 @@
     "approach_type": "Classical ML",
     "model_name": "TfidfVectorizer (bigrams, sublinear TF)",
     "hyperparameters": {
-      "threshold": 0.45,
-      "max_features": 25000
+      "threshold": 0.4,
+      "max_features": 25000,
+      "top_k": 50
     },
     "validation_metrics": {
-      "mean_precision": 0.8478197928288619,
-      "mean_recall": 0.7417910207128253,
-      "mean_f1": 0.7406133174404199,
+      "mean_precision": 0.7992955011391897,
+      "mean_recall": 0.7803328541625743,
+      "mean_f1": 0.7393511690822442,
       "num_queries": 5141
     },
     "test_metrics": {
-      "mean_precision": 0.8423973009263478,
-      "mean_recall": 0.7434411991011607,
-      "mean_f1": 0.740945654138017,
+      "mean_precision": 0.7880519854812705,
+      "mean_recall": 0.7830775516001515,
+      "mean_f1": 0.7371128172802361,
       "num_queries": 5138
     },
-    "notes": "Classical NLP baseline using sparse cosine similarity. Vocabulary fitted strictly on train split.",
-    "timestamp": "2026-09-16T17:10:23.009342"
+    "delta_val_f1": 0.0,
+    "delta_reference": "exp_00",
+    "selected": false,
+    "notes": "Reference baseline. Vocabulary fitted strictly on train split.",
+    "timestamp": "2026-10-10T02:54:06Z"
+  },
+  {
+    "experiment_id": "exp_01",
+    "name": "Experiment 1 \u2014 Pretrained Text Embeddings",
+    "approach_type": "Text Deep Learning",
+    "model_name": "all-MiniLM-L6-v2",
+    "hyperparameters": {
+      "threshold": 0.7,
+      "dimension": 384,
+      "top_k": 50
+    },
+    "validation_metrics": {
+      "mean_precision": 0.9003617324859944,
+      "mean_recall": 0.6868072361146312,
+      "mean_f1": 0.726667277003564,
+      "num_queries": 5141
+    },
+    "test_metrics": {
+      "mean_precision": 0.9029938319010758,
+      "mean_recall": 0.6840496751408528,
+      "mean_f1": 0.727591020315179,
+      "num_queries": 5138
+    },
+    "delta_val_f1": -0.012683892078680148,
+    "delta_reference": "exp_00",
+    "selected": false,
+    "notes": "Winning pretrained transformer based on validation F1. Delta over TF-IDF: -0.0127",
+    "timestamp": "2026-10-10T02:54:39Z"
+  },
+  {
+    "experiment_id": "exp_02",
+    "name": "Experiment 2 \u2014 Domain-Adapted Text Encoder",
+    "approach_type": "Domain Adaptation",
+    "model_name": "all-MiniLM-L6-v2 (fine-tuned MultipleNegatives)",
+    "hyperparameters": {
+      "threshold": 0.6,
+      "epochs": 2,
+      "batch_size": 32,
+      "top_k": 50
+    },
+    "validation_metrics": {
+      "mean_precision": 0.8732018629588231,
+      "mean_recall": 0.7974697210445999,
+      "mean_f1": 0.7873537406566264,
+      "num_queries": 5141
+    },
+    "test_metrics": {
+      "mean_precision": 0.8664529466798292,
+      "mean_recall": 0.7991344405879702,
+      "mean_f1": 0.7852961758617071,
+      "num_queries": 5138
+    },
+    "delta_val_f1": 0.060686463653062406,
+    "delta_reference": "exp_01",
+    "selected": false,
+    "notes": "Supervised domain adaptation via MultipleNegativesRankingLoss. Delta over Exp 1: +0.0607",
+    "timestamp": "2026-10-10T02:55:35Z"
+  },
+  {
+    "experiment_id": "exp_03",
+    "name": "Experiment 3 \u2014 Visual Image Embeddings",
+    "approach_type": "Vision Deep Learning",
+    "model_name": "timm / EfficientNet-B0",
+    "hyperparameters": {
+      "threshold": 0.7,
+      "dimension": 1280,
+      "top_k": 50
+    },
+    "validation_metrics": {
+      "mean_precision": 0.9586834110041873,
+      "mean_recall": 0.6535237656812045,
+      "mean_f1": 0.7230307646218795,
+      "num_queries": 5141
+    },
+    "test_metrics": {
+      "mean_precision": 0.9575800987452456,
+      "mean_recall": 0.6526122746247308,
+      "mean_f1": 0.7241332828978985,
+      "num_queries": 5138
+    },
+    "delta_val_f1": -0.016320404460364646,
+    "delta_reference": "exp_00",
+    "selected": false,
+    "notes": "Winning vision encoder evaluated on validation split.",
+    "timestamp": "2026-10-10T03:00:40Z"
+  },
+  {
+    "experiment_id": "exp_04a",
+    "name": "Experiment 4a \u2014 Grid-Calibrated Weighted Fusion",
+    "approach_type": "Multimodal Fusion",
+    "model_name": "all-MiniLM-L6-v2 (fine-tuned) + timm / EfficientNet-B0 (Grid)",
+    "hyperparameters": {
+      "alpha": 0.6,
+      "threshold": 0.55,
+      "top_k": 50
+    },
+    "validation_metrics": {
+      "mean_precision": 0.907026071761509,
+      "mean_recall": 0.8726376361267326,
+      "mean_f1": 0.8571403872465085,
+      "num_queries": 5141
+    },
+    "test_metrics": {
+      "mean_precision": 0.9039169049123181,
+      "mean_recall": 0.878652729995665,
+      "mean_f1": 0.8602889563006848,
+      "num_queries": 5138
+    },
+    "delta_val_f1": 0.0697866465898821,
+    "delta_reference": "exp_01",
+    "selected": false,
+    "notes": "Score fusion via validation grid sweep. Delta over best unimodal: +0.0698",
+    "timestamp": "2026-10-10T03:00:46Z"
+  },
+  {
+    "experiment_id": "exp_04b",
+    "name": "Experiment 4b \u2014 Learned Weighted Fusion",
+    "approach_type": "Multimodal Fusion",
+    "model_name": "all-MiniLM-L6-v2 (fine-tuned) + timm / EfficientNet-B0 (Learned)",
+    "hyperparameters": {
+      "w_text": 9.463388336669517,
+      "w_image": 7.808722705879871,
+      "bias": -8.197978989829934,
+      "effective_alpha": 0.5478999245290115,
+      "threshold": 0.75,
+      "top_k": 50
+    },
+    "validation_metrics": {
+      "mean_precision": 0.9018834478047086,
+      "mean_recall": 0.8804967996980942,
+      "mean_f1": 0.8589054325097297,
+      "num_queries": 5141
+    },
+    "test_metrics": {
+      "mean_precision": 0.8989260086070889,
+      "mean_recall": 0.8877255288782434,
+      "mean_f1": 0.8629440899621069,
+      "num_queries": 5138
+    },
+    "delta_val_f1": 0.0017650452632211877,
+    "delta_reference": "exp_04a",
+    "selected": true,
+    "notes": "Supervised multimodal fusion trained on train_fusion split. Effective alpha: 0.548",
+    "timestamp": "2026-10-10T03:01:57Z"
+  },
+  {
+    "experiment_id": "exp_05",
+    "name": "Experiment 5 \u2014 Final Optimization & Post-Processing",
+    "approach_type": "Optimized System",
+    "model_name": "Multimodal (Calibrated Threshold, Direct NN Match)",
+    "hyperparameters": {
+      "fusion_type": "learned",
+      "threshold": 0.75,
+      "top_k": 50
+    },
+    "validation_metrics": {
+      "mean_precision": 0.9018834478047086,
+      "mean_recall": 0.8804967996980942,
+      "mean_f1": 0.8589054325097297,
+      "num_queries": 5141
+    },
+    "test_metrics": {
+      "mean_precision": 0.8989260086070889,
+      "mean_recall": 0.8877255288782434,
+      "mean_f1": 0.8629440899621069,
+      "num_queries": 5138
+    },
+    "delta_val_f1": 0.0,
+    "delta_reference": "exp_04b",
+    "selected": true,
+    "notes": "End-to-end deployed configuration for the final demo system.",
+    "timestamp": "2026-10-10T03:01:57Z"
   }
 ]
