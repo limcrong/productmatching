@@ -16,6 +16,15 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from src.app_config import get_model_profile
+
+# Force reload web_search in long-running Streamlit processes to pick up newly added functions
+import importlib
+import src.retrieval.web_search
+try:
+    importlib.reload(src.retrieval.web_search)
+except Exception:
+    pass
+
 from src.retrieval.web_search import (
     get_serpapi_key,
     search_google_shopping,
@@ -23,6 +32,25 @@ from src.retrieval.web_search import (
     load_curated_demo_cases,
     WebCandidate,
 )
+
+try:
+    from src.retrieval.web_search import detect_title_from_image, fetch_candidate_image
+except ImportError:
+    # Bulletproof fallback in case Streamlit process holds stale in-memory module
+    def detect_title_from_image(image_url: str, api_key: str, country: str = "sg"):
+        return None
+
+    def fetch_candidate_image(url: str, timeout: int = 5):
+        if not url:
+            return None
+        try:
+            import urllib.request
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return Image.open(io.BytesIO(resp.read())).convert("RGB")
+        except Exception:
+            return None
+
 from src.pipeline.live_matcher import match_and_rank_candidates
 
 load_dotenv(ROOT_DIR / ".env")
@@ -87,6 +115,12 @@ alpha_slider = st.sidebar.slider(
 
 st.sidebar.caption(f"Image Weight (1 - α): **{1.0 - alpha_slider:.2f}**")
 
+only_show_priced = st.sidebar.checkbox(
+    "Only Show Listings With Prices",
+    value=False,
+    help="Hides catalog cards or entries without an available merchant price.",
+)
+
 # Main Interface
 st.subheader("1️⃣ Product Input (Image & Title Hint)")
 
@@ -118,15 +152,53 @@ if "Curated Demo" in search_mode:
 
 else:
     # Live Search Mode
+    st.info("🛍️ **Google Shopping Tab Search**: Retrieves live listings across online stores with merchant names, links, and real-time prices.")
+
+    col_title, col_engine = st.columns([3, 1])
+    with col_title:
+        query_title = st.text_input(
+            "Product Title / Search Keyword (Google Shopping):",
+            value="Sony WH-1000XM5",
+            help="Enter product name/model. This queries Google Shopping tab for verified merchant offers.",
+        )
+    with col_engine:
+        search_engine_choice = st.selectbox(
+            "Retrieval Engine:",
+            options=["Google Shopping Tab (Prices)", "Google Lens (Visual Matches)"],
+            index=0,
+            help="Google Shopping tab returns store listings with prices. Google Lens performs open web reverse-image matching.",
+        )
+
+    st.markdown("**Optional Query Image (for Multimodal Visual Comparison):**")
     col_upload, col_url = st.columns(2)
     with col_upload:
-        uploaded_file = st.file_uploader("Upload Product Screenshot / Photo:", type=["jpg", "jpeg", "png", "webp"])
+        uploaded_file = st.file_uploader(
+            "Upload Product Photo / Screenshot:",
+            type=["jpg", "jpeg", "png", "webp"],
+            help="Visual similarity compares this image with candidate listing thumbnails.",
+        )
     with col_url:
-        image_url = st.text_input("Or Public Image URL (for Google Lens):", value="")
+        image_url = st.text_input(
+            "Or Public Image URL:",
+            value="",
+            help="Direct image URL to use as visual matching reference.",
+        )
 
-    query_title = st.text_input("Product Title / Search Keyword:", value="Sony WH-1000XM5")
+    # Preview query image if supplied
+    query_image = None
+    if uploaded_file is not None:
+        try:
+            query_image = Image.open(uploaded_file).convert("RGB")
+            st.image(query_image, caption="Loaded Query Image (File Upload)", width=150)
+        except Exception:
+            pass
+    elif image_url.strip():
+        with st.spinner("Loading query image preview..."):
+            query_image = fetch_candidate_image(image_url.strip())
+            if query_image:
+                st.image(query_image, caption="Loaded Query Image (URL)", width=150)
 
-    execute_search = st.button("🔍 Search Real Web & Compare Offers", type="primary")
+    execute_search = st.button("🔍 Search Google Shopping & Compare Offers", type="primary")
 
 st.divider()
 
@@ -154,20 +226,37 @@ if execute_search:
                 st.error("Please provide a SerpAPI key in .env or the sidebar.")
                 st.stop()
 
-            if image_url.strip():
-                candidates = search_google_lens(image_url.strip(), api_key=api_key, country=country)
-            elif query_title.strip():
-                candidates = search_google_shopping(query_title.strip(), api_key=api_key, country=country)
-            else:
-                st.warning("Please provide a product title query or image.")
-                st.stop()
+            # Ensure query_image is prepared
+            if query_image is None:
+                if uploaded_file is not None:
+                    try:
+                        query_image = Image.open(uploaded_file).convert("RGB")
+                    except Exception:
+                        pass
+                elif image_url.strip():
+                    query_image = fetch_candidate_image(image_url.strip())
 
-            query_image = None
-            if uploaded_file is not None:
-                try:
-                    query_image = Image.open(uploaded_file).convert("RGB")
-                except Exception:
-                    pass
+            # Decide retrieval engine
+            if "Google Lens" in search_engine_choice:
+                if not image_url.strip():
+                    st.warning("Google Lens requires a public Image URL.")
+                    st.stop()
+                candidates = search_google_lens(image_url.strip(), api_key=api_key, country=country)
+            else:
+                # Default: Google Shopping Tab
+                search_query = query_title.strip()
+                if not search_query and image_url.strip():
+                    # Attempt to detect product name from image URL
+                    detected = detect_title_from_image(image_url.strip(), api_key=api_key, country=country)
+                    if detected:
+                        st.info(f"Recognized product name from image: **{detected}**")
+                        search_query = detected
+
+                if not search_query:
+                    st.warning("Please provide a product title query (e.g. 'Sony WH-1000XM5') to search Google Shopping.")
+                    st.stop()
+
+                candidates = search_google_shopping(search_query, api_key=api_key, country=country)
 
         # Match and rank candidates
         matched, rejected = match_and_rank_candidates(
@@ -181,10 +270,16 @@ if execute_search:
             bias=mm_profile.get("bias"),
         )
 
+        if only_show_priced:
+            matched = [c for c in matched if c.price is not None]
+            rejected = [c for c in rejected if c.price is not None]
+
         st.subheader("2️⃣ Cross-Merchant Comparison Results")
 
         if matched:
-            best_offer = matched[0]
+            # Pick lowest price offer among matched products
+            offers_with_price = [c for c in matched if c.price is not None]
+            best_offer = offers_with_price[0] if offers_with_price else matched[0]
             try:
                 best_price_str = f"${float(best_offer.price):.2f} {best_offer.currency}"
             except (ValueError, TypeError):
