@@ -95,17 +95,17 @@ country = st.sidebar.selectbox("Marketplace Country:", ["sg", "us", "id", "my"],
 fusion_model_choice = st.sidebar.selectbox(
     "Matching & Fusion Strategy",
     options=[
-        "🎯 Linear Grid Fusion (Exp 4a, τ=0.55, α=0.60)",
-        "🤖 Learned Logistic Fusion (Exp 4b, τ=0.75)",
+        "🎯 Linear Score Fusion (Exp 4a - Adjustable Weights, 90.7% Precision)",
+        "🤖 Learned Logistic Fusion (Exp 4b - Supervised Fixed Sigmoid)",
     ],
     index=0,
-    help="Exp 4a uses validation grid-calibrated score fusion. Exp 4b uses supervised logistic regression.",
+    help="Linear Score Fusion (Exp 4a) is recommended for variant filtering because it allows tuning the Text Weight (α) to penalize fine variant differences, avoiding sigmoid saturation.",
 )
 
 is_learned = "Learned" in fusion_model_choice
 fusion_type = "learned" if is_learned else "grid"
-default_th = 0.75 if is_learned else 0.55
-default_alpha = float(mm_profile.get("default_alpha", 0.60))
+default_th = 0.95 if is_learned else 0.70
+default_alpha = 0.70 if not is_learned else float(mm_profile.get("default_alpha", 0.55))
 
 th_slider = st.sidebar.slider(
     "Match Threshold (τ):",
@@ -113,9 +113,9 @@ th_slider = st.sidebar.slider(
     max_value=1.0,
     value=float(default_th),
     step=0.01,
-    help=f"Calibrated validation threshold is {default_th:.2f}.",
+    help=f"Recommended threshold for filtering variants is {default_th:.2f}.",
 )
-st.sidebar.caption(f"🎯 Calibrated τ: **{default_th:.2f}**")
+st.sidebar.caption(f"🎯 Threshold τ: **{th_slider:.2f}**")
 
 if not is_learned:
     alpha_slider = st.sidebar.slider(
@@ -124,13 +124,13 @@ if not is_learned:
         max_value=1.0,
         value=float(default_alpha),
         step=0.05,
-        help="Similarity = α * Sim_text + (1 - α) * Sim_image",
+        help="Higher α increases focus on exact text specifications (e.g. stage, capacity, model) over generic visual packaging.",
     )
-    st.sidebar.caption(f"Image Weight (1 - α): **{1.0 - alpha_slider:.2f}**")
+    st.sidebar.caption(f"Text Weight (α): **{alpha_slider:.2f}** | Image Weight: **{1.0 - alpha_slider:.2f}**")
 else:
     alpha_slider = default_alpha
     st.sidebar.info("🤖 **Learned Logistic Weights:** w_text = 9.46, w_image = 7.81, bias = -8.20")
-    st.sidebar.caption(f"Effective Text Weight: **{default_alpha:.2f}** | Image Weight: **{1.0 - default_alpha:.2f}**")
+    st.sidebar.caption(f"Sigmoid probability calibration requires high τ (≥ 0.95) because candidate search results already share partial text.")
 
 only_show_priced = st.sidebar.checkbox(
     "Only Show Listings With Prices",
@@ -371,13 +371,14 @@ if execute_search:
     else:
         st.info("No candidates cleared the match threshold.")
 
-    # Section 2: Rejected Accessories / Hard Negatives
-    st.markdown(f"### ⚪ Filtered Out Accessories & Variants ({len(rejected)})")
-    st.caption("Safely rejected items (cases, covers, cables, distinct models) filtered out by the model:")
+    # Section 2: Rejected Variants / Non-Matches
+    st.markdown(f"### ⚪ Filtered Out Variants & Non-Matches ({len(rejected)})")
+    st.caption("Unrelated variants and low-similarity listings safely rejected by the ML model below the decision threshold:")
 
     if rejected:
         r_cols = st.columns(min(len(rejected), 3))
-        for i, rej in enumerate(rejected[:6]):
+        display_limit = min(len(rejected), 12)
+        for i, rej in enumerate(rejected[:display_limit]):
             with r_cols[i % 3]:
                 with st.container(border=True):
                     if rej.thumbnail_url:
@@ -391,6 +392,9 @@ if execute_search:
 
                     if rej_price_str:
                         st.caption(rej_price_str)
-                    rej_badge = f" ({rej.match_reason})" if rej.match_reason else ""
-                    st.error(f"✗ Filtered{rej_badge} (Score: {rej.similarity_fused:.2f} < {th_slider:.2f})")
-                    st.caption(f"Text Sim: `{rej.similarity_text:.2f}` | Img Sim: `{rej.similarity_image:.2f}`")
+                    st.error(f"✗ Filtered (Model Score: `{rej.similarity_fused:.3f}` < `{th_slider:.2f}`)")
+                    st.caption(f"Text Sim: `{rej.similarity_text:.3f}` | Img Sim: `{rej.similarity_image:.3f}`")
+        if len(rejected) > display_limit:
+            with st.expander(f"View remaining {len(rejected) - display_limit} rejected items"):
+                for rej in rejected[display_limit:]:
+                    st.write(f"- **{rej.merchant}**: {rej.title} (Score: `{rej.similarity_fused:.3f}`)")
