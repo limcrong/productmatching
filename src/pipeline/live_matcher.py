@@ -78,18 +78,68 @@ def compute_image_similarity(
     return sims
 
 
+import re
+
+def verify_candidate_compatibility(
+    query_title: str,
+    candidate_title: str,
+    raw_score: float,
+    threshold: float,
+) -> Tuple[bool, float, str]:
+    """
+    Applies e-commerce hard negative filtering and exact model code alignment.
+    Filters out unwanted accessories, conflicting generations (e.g. XM6 vs XM5),
+    and form factor mismatches (e.g. WF earbuds vs WH over-ear).
+    Recovers valid exact model matches where the retail title omits the brand.
+    """
+    q_lower = query_title.lower()
+    c_lower = candidate_title.lower()
+
+    # 1. Accessories check: if query does not ask for an accessory, reject accessories
+    accessories = ["case", "cover", "ear pad", "earpad", "cushion", "cable", "strap", "stand", "protector", "sleeve", "skin"]
+    has_accessory = any(acc in c_lower for acc in accessories)
+    query_wants_accessory = any(acc in q_lower for acc in accessories)
+    if has_accessory and not query_wants_accessory:
+        return False, min(raw_score, threshold - 0.05), "Accessory / Peripheral"
+
+    # 2. Conflicting model generation check (e.g. XM6 / XM4 vs XM5)
+    for gen in ["xm5", "xm4", "xm3", "xm6"]:
+        if gen in q_lower:
+            other_gens = [g for g in ["xm5", "xm4", "xm3", "xm6"] if g != gen]
+            if any(g in c_lower for g in other_gens) and gen not in c_lower:
+                return False, min(raw_score, threshold - 0.05), f"Model generation mismatch (e.g. {gen.upper()})"
+
+    # Form factor check (Over-ear WH vs in-ear WF)
+    if ("wh" in q_lower or "over-ear" in q_lower) and ("wf-" in c_lower or "wf1000" in c_lower or "in-ear" in c_lower):
+        return False, min(raw_score, threshold - 0.05), "Form-factor mismatch (Earbuds vs Over-ear)"
+    elif ("wf" in q_lower or "in-ear" in q_lower) and ("wh-" in c_lower or "wh1000" in c_lower or "over-ear" in c_lower):
+        return False, min(raw_score, threshold - 0.05), "Form-factor mismatch (Over-ear vs Earbuds)"
+
+    # 3. Model number boost: if query contains a distinct alphanumeric model number (e.g., '1000xm5', 'wh1000xm5', '15 pro')
+    model_codes = re.findall(r'[a-zA-Z]*\d+[a-zA-Z0-9]*', q_lower)
+    model_codes = [c for c in model_codes if len(c) >= 3 and any(char.isdigit() for char in c)]
+    final_score = raw_score
+    if model_codes and all(code in c_lower for code in model_codes):
+        # Confirmed exact model code in candidate title
+        final_score = max(final_score, max(threshold, 0.65))
+        return True, final_score, "Verified Exact Model"
+
+    is_match = final_score >= threshold
+    return is_match, final_score, "Match Verified" if is_match else f"Score {final_score:.2f} < Threshold {threshold:.2f}"
+
+
 def match_and_rank_candidates(
     query_title: str,
     query_image: Optional[Image.Image],
     candidates: List[WebCandidate],
-    threshold: float = 0.65,
+    threshold: float = 0.55,
     alpha: float = 0.60,
     fusion_type: str = "grid",
     weights: Optional[Dict[str, float]] = None,
     bias: Optional[float] = None,
 ) -> Tuple[List[WebCandidate], List[WebCandidate]]:
     """
-    Computes multimodal similarity scores, applies threshold τ,
+    Computes similarity scores, applies threshold τ and hard negative guards,
     and partitions candidates into matched exact products vs. rejected items.
     Matched products are sorted by price ascending (cheapest offer first).
     """
@@ -103,26 +153,42 @@ def match_and_rank_candidates(
     if text_sims.ndim == 0:
         text_sims = np.array([float(text_sims)])
 
-    img_sims = compute_image_similarity(query_image, candidate_images)
-    if img_sims.ndim == 0:
-        img_sims = np.array([float(img_sims)])
+    # If query image is absent, perform pure text matching (gap plan D4 & Exp 2)
+    has_query_image = query_image is not None
+    if has_query_image:
+        img_sims = compute_image_similarity(query_image, candidate_images)
+        if img_sims.ndim == 0:
+            img_sims = np.array([float(img_sims)])
 
-    if fusion_type == "learned" and weights:
-        w_t = weights.get("w_text", 1.0)
-        w_i = weights.get("w_image", 1.0)
-        b = bias or 0.0
-        fused_sims = learned_fusion(text_sims, img_sims, w_t, w_i, b)
+        if fusion_type == "learned" and weights:
+            w_t = weights.get("w_text", 1.0)
+            w_i = weights.get("w_image", 1.0)
+            b = bias or 0.0
+            fused_sims = learned_fusion(text_sims, img_sims, w_t, w_i, b)
+        else:
+            # Linear score fusion (Experiment 4a)
+            fused_sims = score_fusion(text_sims, img_sims, alpha=alpha)
     else:
-        fused_sims = score_fusion(text_sims, img_sims, alpha=alpha)
+        img_sims = np.zeros(len(candidates), dtype=np.float32)
+        fused_sims = text_sims.copy()
 
     matched = []
     rejected = []
 
     for i, cand in enumerate(candidates):
         cand.similarity_text = float(text_sims[i])
-        cand.similarity_image = float(img_sims[i])
-        cand.similarity_fused = float(fused_sims[i])
-        cand.is_match = cand.similarity_fused >= threshold
+        cand.similarity_image = float(img_sims[i]) if has_query_image else 0.0
+
+        raw_fused = float(fused_sims[i])
+        is_match, final_score, reason = verify_candidate_compatibility(
+            query_title=query_title,
+            candidate_title=cand.title,
+            raw_score=raw_fused,
+            threshold=threshold,
+        )
+        cand.similarity_fused = final_score
+        cand.is_match = is_match
+        cand.match_reason = reason
 
         if cand.is_match:
             matched.append(cand)

@@ -38,6 +38,7 @@ class WebCandidate:
     similarity_image: float = 0.0
     similarity_fused: float = 0.0
     is_match: bool = False
+    match_reason: str = ""
 
 
 def get_serpapi_key() -> Optional[str]:
@@ -52,7 +53,7 @@ def get_serpapi_key() -> Optional[str]:
     return key
 
 
-def fetch_candidate_image(url: str, timeout: int = 5) -> Optional[Image.Image]:
+def fetch_candidate_image(url: str, timeout: float = 2.0) -> Optional[Image.Image]:
     """Downloads candidate thumbnail safely within timeout."""
     if not url:
         return None
@@ -160,6 +161,7 @@ def search_google_shopping(
     api_key: str,
     country: str = "sg",
     max_results: int = 25,
+    progress_callback: Optional[Any] = None,
 ) -> List[WebCandidate]:
     """
     Queries Google Shopping Tab via SerpAPI to retrieve authentic merchant offers with prices.
@@ -176,6 +178,9 @@ def search_google_shopping(
         "api_key": api_key,
     }
 
+    if progress_callback:
+        progress_callback(f"Querying Google Shopping (Country: {country.upper()})...", 20)
+
     search = GoogleSearch(params)
     results = search.get_dict()
     shopping_results = results.get("shopping_results", [])
@@ -185,6 +190,9 @@ def search_google_shopping(
         elif "categorized_shopping_results" in results:
             for cat in results["categorized_shopping_results"]:
                 shopping_results.extend(cat.get("items", []))
+
+    if progress_callback:
+        progress_callback(f"Parsing {min(len(shopping_results), max_results)} merchant offers and prices...", 40)
 
     candidates = []
     urls_to_fetch = []
@@ -209,8 +217,11 @@ def search_google_shopping(
         candidates.append(cand)
         urls_to_fetch.append(thumb_url)
 
+    if progress_callback:
+        progress_callback(f"Loading candidate product thumbnails...", 60)
+
     # Concurrently fetch candidate images for multimodal matching
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=12) as executor:
         images = list(executor.map(fetch_candidate_image, urls_to_fetch))
 
     for cand, img in zip(candidates, images):

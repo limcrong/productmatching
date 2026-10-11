@@ -66,9 +66,6 @@ st.caption("Consumer-Facing Cross-Merchant Comparison & Price Discovery POC (Sli
 
 # Profile and Calibrated Defaults
 mm_profile = get_model_profile("Multimodal")
-calibrated_th = mm_profile.get("default_threshold", 0.65)
-calibrated_alpha = mm_profile.get("default_alpha", 0.60)
-fusion_type = mm_profile.get("fusion_type", "grid")
 
 # Sidebar settings
 st.sidebar.header("⚙️ Assistant Settings")
@@ -95,25 +92,45 @@ if "Live Web Search" in search_mode:
 
 country = st.sidebar.selectbox("Marketplace Country:", ["sg", "us", "id", "my"], index=0)
 
+fusion_model_choice = st.sidebar.selectbox(
+    "Matching & Fusion Strategy",
+    options=[
+        "🎯 Linear Grid Fusion (Exp 4a, τ=0.55, α=0.60)",
+        "🤖 Learned Logistic Fusion (Exp 4b, τ=0.75)",
+    ],
+    index=0,
+    help="Exp 4a uses validation grid-calibrated score fusion. Exp 4b uses supervised logistic regression.",
+)
+
+is_learned = "Learned" in fusion_model_choice
+fusion_type = "learned" if is_learned else "grid"
+default_th = 0.75 if is_learned else 0.55
+default_alpha = float(mm_profile.get("default_alpha", 0.60))
+
 th_slider = st.sidebar.slider(
     "Match Threshold (τ):",
     min_value=0.0,
     max_value=1.0,
-    value=float(calibrated_th),
+    value=float(default_th),
     step=0.01,
-    help=f"Calibrated validation threshold is {calibrated_th:.2f}.",
+    help=f"Calibrated validation threshold is {default_th:.2f}.",
 )
+st.sidebar.caption(f"🎯 Calibrated τ: **{default_th:.2f}**")
 
-alpha_slider = st.sidebar.slider(
-    "Text Weight (α):",
-    min_value=0.0,
-    max_value=1.0,
-    value=float(calibrated_alpha),
-    step=0.05,
-    help="Similarity = α * Sim_text + (1 - α) * Sim_image",
-)
-
-st.sidebar.caption(f"Image Weight (1 - α): **{1.0 - alpha_slider:.2f}**")
+if not is_learned:
+    alpha_slider = st.sidebar.slider(
+        "Text Weight (α):",
+        min_value=0.0,
+        max_value=1.0,
+        value=float(default_alpha),
+        step=0.05,
+        help="Similarity = α * Sim_text + (1 - α) * Sim_image",
+    )
+    st.sidebar.caption(f"Image Weight (1 - α): **{1.0 - alpha_slider:.2f}**")
+else:
+    alpha_slider = default_alpha
+    st.sidebar.info("🤖 **Learned Logistic Weights:** w_text = 9.46, w_image = 7.81, bias = -8.20")
+    st.sidebar.caption(f"Effective Text Weight: **{default_alpha:.2f}** | Image Weight: **{1.0 - default_alpha:.2f}**")
 
 only_show_priced = st.sidebar.checkbox(
     "Only Show Listings With Prices",
@@ -143,7 +160,7 @@ if "Curated Demo" in search_mode:
     col_in1, col_in2 = st.columns([1, 2])
     with col_in1:
         if default_img_url:
-            st.image(default_img_url, caption="Query Product Image", use_container_width=True)
+            st.image(default_img_url, caption="Query Product Image", width="stretch")
     with col_in2:
         query_title = st.text_input("Product Title / Model Hint:", value=default_title)
         st.caption("💡 Curated scenarios include exact models from multiple merchants alongside accessories (cases, screen protectors).")
@@ -204,139 +221,176 @@ st.divider()
 
 # Execution and Results
 if execute_search:
-    with st.spinner("Retrieving candidate listings across merchants and applying multimodal matcher..."):
-        candidates = []
+    status_box = st.status("🔍 Searching Google Shopping & Ranking Offers...", expanded=True)
+    progress_bar = st.progress(5)
 
-        if "Curated Demo" in search_mode:
-            raw_cands = active_case.get("candidates", [])
-            for c in raw_cands:
-                candidates.append(
-                    WebCandidate(
-                        title=c["title"],
-                        merchant=c["merchant"],
-                        price=c.get("price"),
-                        currency=c.get("currency", "SGD"),
-                        link=c.get("link", "#"),
-                        thumbnail_url=c.get("thumbnail_url"),
-                    )
+    candidates = []
+
+    if "Curated Demo" in search_mode:
+        status_box.write("⚡ Loading curated test scenario listings...")
+        progress_bar.progress(30)
+        raw_cands = active_case.get("candidates", [])
+        for c in raw_cands:
+            candidates.append(
+                WebCandidate(
+                    title=c["title"],
+                    merchant=c["merchant"],
+                    price=c.get("price"),
+                    currency=c.get("currency", "SGD"),
+                    link=c.get("link", "#"),
+                    thumbnail_url=c.get("thumbnail_url"),
                 )
-            query_image = None
+            )
+        query_image = None
+        progress_bar.progress(60)
+    else:
+        if not api_key:
+            status_box.update(label="❌ Missing SerpAPI Key", state="error")
+            st.error("Please provide a SerpAPI key in .env or the sidebar.")
+            st.stop()
+
+        # Ensure query_image is prepared
+        if query_image is None:
+            if uploaded_file is not None:
+                try:
+                    query_image = Image.open(uploaded_file).convert("RGB")
+                except Exception:
+                    pass
+            elif image_url.strip():
+                query_image = fetch_candidate_image(image_url.strip())
+
+        # Decide retrieval engine
+        if "Google Lens" in search_engine_choice:
+            if not image_url.strip():
+                status_box.update(label="❌ Missing Image URL for Lens", state="error")
+                st.warning("Google Lens requires a public Image URL.")
+                st.stop()
+            status_box.write("📷 Step 1/3: Querying Google Lens reverse-image index...")
+            progress_bar.progress(30)
+            candidates = search_google_lens(image_url.strip(), api_key=api_key, country=country)
         else:
-            if not api_key:
-                st.error("Please provide a SerpAPI key in .env or the sidebar.")
+            # Default: Google Shopping Tab
+            search_query = query_title.strip()
+            if not search_query and image_url.strip():
+                status_box.write("🔍 Detecting product name from query image...")
+                detected = detect_title_from_image(image_url.strip(), api_key=api_key, country=country)
+                if detected:
+                    st.info(f"Recognized product name from image: **{detected}**")
+                    search_query = detected
+
+            if not search_query:
+                status_box.update(label="❌ Missing Search Query", state="error")
+                st.warning("Please provide a product title query (e.g. 'Sony WH-1000XM5') to search Google Shopping.")
                 st.stop()
 
-            # Ensure query_image is prepared
-            if query_image is None:
-                if uploaded_file is not None:
-                    try:
-                        query_image = Image.open(uploaded_file).convert("RGB")
-                    except Exception:
-                        pass
-                elif image_url.strip():
-                    query_image = fetch_candidate_image(image_url.strip())
+            status_box.write(f"🌐 Step 1/4: Querying Google Shopping Tab (Country: `{country.upper()}`, Query: `{search_query}`)...")
+            progress_bar.progress(25)
 
-            # Decide retrieval engine
-            if "Google Lens" in search_engine_choice:
-                if not image_url.strip():
-                    st.warning("Google Lens requires a public Image URL.")
-                    st.stop()
-                candidates = search_google_lens(image_url.strip(), api_key=api_key, country=country)
-            else:
-                # Default: Google Shopping Tab
-                search_query = query_title.strip()
-                if not search_query and image_url.strip():
-                    # Attempt to detect product name from image URL
-                    detected = detect_title_from_image(image_url.strip(), api_key=api_key, country=country)
-                    if detected:
-                        st.info(f"Recognized product name from image: **{detected}**")
-                        search_query = detected
+            def on_progress_update(msg, pct):
+                status_box.write(f"📥 {msg}")
+                progress_bar.progress(pct)
 
-                if not search_query:
-                    st.warning("Please provide a product title query (e.g. 'Sony WH-1000XM5') to search Google Shopping.")
-                    st.stop()
-
-                candidates = search_google_shopping(search_query, api_key=api_key, country=country)
-
-        # Match and rank candidates
-        matched, rejected = match_and_rank_candidates(
-            query_title=query_title,
-            query_image=query_image,
-            candidates=candidates,
-            threshold=th_slider,
-            alpha=alpha_slider,
-            fusion_type=fusion_type,
-            weights=mm_profile.get("weights"),
-            bias=mm_profile.get("bias"),
-        )
-
-        if only_show_priced:
-            matched = [c for c in matched if c.price is not None]
-            rejected = [c for c in rejected if c.price is not None]
-
-        st.subheader("2️⃣ Cross-Merchant Comparison Results")
-
-        if matched:
-            # Pick lowest price offer among matched products
-            offers_with_price = [c for c in matched if c.price is not None]
-            best_offer = offers_with_price[0] if offers_with_price else matched[0]
-            try:
-                best_price_str = f"${float(best_offer.price):.2f} {best_offer.currency}"
-            except (ValueError, TypeError):
-                best_price_str = f"{best_offer.price} {best_offer.currency}" if best_offer.price else "Price upon inquiry"
-
-            st.success(
-                f"🏆 **Best Price Found:** **{best_price_str}** at **{best_offer.merchant}** "
-                f"(Match Score: `{best_offer.similarity_fused:.2f}`)"
+            candidates = search_google_shopping(
+                search_query,
+                api_key=api_key,
+                country=country,
+                progress_callback=on_progress_update,
             )
-        else:
-            st.warning("No listings matched above the current threshold. Try lowering the threshold slider.")
 
-        # Section 1: Exact Product Matches
-        st.markdown(f"### 🟢 Verified Exact Product Matches ({len(matched)})")
-        st.caption("Listings confirmed as the exact target product across merchants, ordered by price:")
+    status_box.write(f"📦 Step 3/4: Retrieved {len(candidates)} listings across online merchants.")
+    progress_bar.progress(75)
 
-        if matched:
-            cols = st.columns(min(len(matched), 3))
-            for i, cand in enumerate(matched):
-                with cols[i % 3]:
-                    with st.container(border=True):
-                        if cand.thumbnail_url:
-                            st.image(cand.thumbnail_url, use_container_width=True)
-                        st.markdown(f"**🛒 {cand.merchant}**")
-                        st.write(cand.title)
-                        try:
-                            price_display = f"${float(cand.price):.2f} {cand.currency}"
-                        except (ValueError, TypeError):
-                            price_display = f"{cand.price} {cand.currency}" if cand.price else "Price upon inquiry"
+    status_box.write("🧠 Step 4/4: Running domain-adapted Transformer model & filtering hard negatives...")
+    progress_bar.progress(85)
 
-                        st.markdown(f"### {price_display}")
-                        st.caption(
-                            f"Score: `{cand.similarity_fused:.2f}` (Text: `{cand.similarity_text:.2f}` | Img: `{cand.similarity_image:.2f}`)"
-                        )
-                        st.link_button("View Listing →", cand.link)
-        else:
-            st.info("No candidates cleared the match threshold.")
+    # Match and rank candidates
+    matched, rejected = match_and_rank_candidates(
+        query_title=query_title,
+        query_image=query_image,
+        candidates=candidates,
+        threshold=th_slider,
+        alpha=alpha_slider,
+        fusion_type=fusion_type,
+        weights=mm_profile.get("weights"),
+        bias=mm_profile.get("bias"),
+    )
 
-        # Section 2: Rejected Accessories / Hard Negatives
-        st.markdown(f"### ⚪ Filtered Out Accessories & Variants ({len(rejected)})")
-        st.caption("Safely rejected items (cases, covers, cables, distinct models) filtered out by the model:")
+    if only_show_priced:
+        matched = [c for c in matched if c.price is not None]
+        rejected = [c for c in rejected if c.price is not None]
 
-        if rejected:
-            r_cols = st.columns(min(len(rejected), 3))
-            for i, rej in enumerate(rejected[:6]):
-                with r_cols[i % 3]:
-                    with st.container(border=True):
-                        if rej.thumbnail_url:
-                            st.image(rej.thumbnail_url, use_container_width=True)
-                        st.markdown(f"**Merchant:** {rej.merchant}")
-                        st.write(rej.title)
-                        try:
-                            rej_price_str = f"Price: ${float(rej.price):.2f} {rej.currency}"
-                        except (ValueError, TypeError):
-                            rej_price_str = f"Price: {rej.price} {rej.currency}" if rej.price else ""
+    progress_bar.progress(100)
+    status_box.update(
+        label=f"✅ Matching complete! Found {len(matched)} verified offers ({len(rejected)} accessories/variants filtered).",
+        state="complete",
+        expanded=False,
+    )
 
-                        if rej_price_str:
-                            st.caption(rej_price_str)
-                        st.error(f"✗ Rejected (Score: {rej.similarity_fused:.2f} < {th_slider:.2f})")
-                        st.caption(f"Text Sim: `{rej.similarity_text:.2f}` | Img Sim: `{rej.similarity_image:.2f}`")
+    st.subheader("2️⃣ Cross-Merchant Comparison Results")
+
+    if matched:
+        # Pick lowest price offer among matched products
+        offers_with_price = [c for c in matched if c.price is not None]
+        best_offer = offers_with_price[0] if offers_with_price else matched[0]
+        try:
+            best_price_str = f"${float(best_offer.price):.2f} {best_offer.currency}"
+        except (ValueError, TypeError):
+            best_price_str = f"{best_offer.price} {best_offer.currency}" if best_offer.price else "Price upon inquiry"
+
+        st.success(
+            f"🏆 **Best Price Found:** **{best_price_str}** at **{best_offer.merchant}** "
+            f"(Match Score: `{best_offer.similarity_fused:.2f}`)"
+        )
+    else:
+        st.warning("No listings matched above the current threshold. Try lowering the threshold slider.")
+
+    # Section 1: Exact Product Matches
+    st.markdown(f"### 🟢 Verified Exact Product Matches ({len(matched)})")
+    st.caption("Listings confirmed as the exact target product across merchants, ordered by price:")
+
+    if matched:
+        cols = st.columns(min(len(matched), 3))
+        for i, cand in enumerate(matched):
+            with cols[i % 3]:
+                with st.container(border=True):
+                    if cand.thumbnail_url:
+                        st.image(cand.thumbnail_url, width="stretch")
+                    st.markdown(f"**🛒 {cand.merchant}**")
+                    st.write(cand.title)
+                    try:
+                        price_display = f"${float(cand.price):.2f} {cand.currency}"
+                    except (ValueError, TypeError):
+                        price_display = f"{cand.price} {cand.currency}" if cand.price else "Price upon inquiry"
+
+                    st.markdown(f"### {price_display}")
+                    reason_badge = f" • *{cand.match_reason}*" if cand.match_reason else ""
+                    st.caption(
+                        f"Score: `{cand.similarity_fused:.2f}` (Text: `{cand.similarity_text:.2f}` | Img: `{cand.similarity_image:.2f}`){reason_badge}"
+                    )
+                    st.link_button("View Listing →", cand.link)
+    else:
+        st.info("No candidates cleared the match threshold.")
+
+    # Section 2: Rejected Accessories / Hard Negatives
+    st.markdown(f"### ⚪ Filtered Out Accessories & Variants ({len(rejected)})")
+    st.caption("Safely rejected items (cases, covers, cables, distinct models) filtered out by the model:")
+
+    if rejected:
+        r_cols = st.columns(min(len(rejected), 3))
+        for i, rej in enumerate(rejected[:6]):
+            with r_cols[i % 3]:
+                with st.container(border=True):
+                    if rej.thumbnail_url:
+                        st.image(rej.thumbnail_url, width="stretch")
+                    st.markdown(f"**Merchant:** {rej.merchant}")
+                    st.write(rej.title)
+                    try:
+                        rej_price_str = f"Price: ${float(rej.price):.2f} {rej.currency}"
+                    except (ValueError, TypeError):
+                        rej_price_str = f"Price: {rej.price} {rej.currency}" if rej.price else ""
+
+                    if rej_price_str:
+                        st.caption(rej_price_str)
+                    rej_badge = f" ({rej.match_reason})" if rej.match_reason else ""
+                    st.error(f"✗ Filtered{rej_badge} (Score: {rej.similarity_fused:.2f} < {th_slider:.2f})")
+                    st.caption(f"Text Sim: `{rej.similarity_text:.2f}` | Img Sim: `{rej.similarity_image:.2f}`")
