@@ -105,7 +105,7 @@ fusion_model_choice = st.sidebar.selectbox(
 is_learned = "Learned" in fusion_model_choice
 fusion_type = "learned" if is_learned else "grid"
 default_th = 0.95 if is_learned else 0.70
-default_alpha = 0.70 if not is_learned else float(mm_profile.get("default_alpha", 0.55))
+default_alpha = 0.75 if not is_learned else float(mm_profile.get("default_alpha", 0.55))
 
 th_slider = st.sidebar.slider(
     "Match Threshold (τ):",
