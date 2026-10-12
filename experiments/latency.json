@@ -1,0 +1,10 @@
+{
+  "database_size": 5138,
+  "dimension": 384,
+  "top_k": 50,
+  "brute_force_latency_ms": 0.059,
+  "brute_force_qps": 16865.3,
+  "faiss_latency_ms": 0.059,
+  "faiss_qps": 16865.3,
+  "recall_at_50": 1.0
+}

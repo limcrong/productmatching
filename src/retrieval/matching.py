@@ -41,6 +41,7 @@ def categorize_and_filter_candidates(
     ground_truth_postings: Set[str],
     threshold: float,
     max_rejected_to_show: int = 6,
+    full_df: Optional[pd.DataFrame] = None,
 ) -> MatchingResults:
     """
     Categorizes retrieved candidates relative to the given similarity threshold:
@@ -109,8 +110,21 @@ def categorize_and_filter_candidates(
     similar_rejected = similar_rejected[:max_rejected_to_show]
 
     # Include true matches from ground_truth that were not in the retrieved set at all (score 0.0)
-    # (Note: we check if any true matches were completely unretrieved)
-    missed_matches = missed_retrieved
+    missed_matches = list(missed_retrieved)
+    unretrieved_pids = set(ground_truth_postings) - retrieved_pids - {query_posting_id}
+    if full_df is not None and unretrieved_pids:
+        unretrieved_rows = full_df[full_df["posting_id"].isin(unretrieved_pids)]
+        for _, row in unretrieved_rows.iterrows():
+            missed_matches.append(
+                CandidateMatch(
+                    posting_id=row["posting_id"],
+                    title=row["title"],
+                    image=row["image"],
+                    label_group=int(row["label_group"]),
+                    score=0.0,
+                    status="Missed Match (Below Top-K)",
+                )
+            )
 
     # Compute per-query precision, recall, F1
     # Predicted set includes all items in matched_products

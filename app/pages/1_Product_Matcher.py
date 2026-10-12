@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from typing import Dict, Any, List, Optional
 
 # Ensure repository root and app directory are at head of sys.path
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
@@ -14,13 +15,15 @@ import pandas as pd
 import numpy as np
 
 from src.config import (
+    TRAIN_SPLIT_CSV,
     TEST_DEMO_SPLIT_CSV,
     EMBEDDINGS_DIR,
 )
-from src.data.loader import load_data, get_ground_truth_map
+from src.app_config import get_model_profile
+from src.data.loader import get_ground_truth_map
 from src.retrieval.matching import categorize_and_filter_candidates
 from src.models.text_encoder import TfidfEncoder
-from src.models.multimodal import MultimodalFusion
+from src.models.multimodal import score_fusion, learned_fusion
 
 try:
     from app.components.sidebar_controls import render_sidebar_controls
@@ -50,57 +53,49 @@ demo_df, gt_map = get_demo_dataset()
 
 if demo_df is None:
     st.warning(
-        "⚠️ Test/demo split not found. Please run the extraction script: "
-        "`python scripts/extract_data.py` to extract CSVs and generate test thumbnails."
+        "⚠️ Test/demo split not found. Please extract dataset splits first."
     )
     st.stop()
 
 # Sidebar experiment controls
 controls = render_sidebar_controls()
 model_choice = controls["model_choice"]
+model_profile = controls["profile"]
 threshold = controls["threshold"]
 alpha = controls["alpha"]
 top_k = controls["top_k"]
 enable_comparison = controls["enable_comparison"]
 comp_model = controls["comp_model"]
+comp_profile = controls["comp_profile"]
 
-# Pre-load or compute demo embeddings cache
+
+# Fit TF-IDF strictly on Train split (Zero Leakage, Experiment 0 Standard)
 @st.cache_resource
-def load_or_compute_demo_embeddings(df_len: int):
-    """
-    Loads saved test embeddings if available, or computes on-the-fly for demo set.
-    """
-    text_emb_file = EMBEDDINGS_DIR / "test_text_embeddings.npy"
-    image_emb_file = EMBEDDINGS_DIR / "test_image_embeddings.npy"
+def get_trained_tfidf():
+    encoder = TfidfEncoder(max_features=25000, ngram_range=(1, 2), sublinear_tf=True)
+    if TRAIN_SPLIT_CSV.exists():
+        train_df = pd.read_csv(TRAIN_SPLIT_CSV)
+        encoder.fit(train_df["title"].tolist())
+    else:
+        # Fallback if train CSV missing
+        encoder.fit(demo_df["title"].tolist())
+    test_matrix = encoder.transform(demo_df["title"].tolist())
+    return encoder, test_matrix
 
-    text_emb = None
-    image_emb = None
 
-    if text_emb_file.exists():
+tfidf_encoder, tfidf_test_matrix = get_trained_tfidf()
+
+
+# Cache preloaded embeddings for demo
+@st.cache_data
+def load_dense_embeddings(filepath: Path):
+    if filepath and filepath.exists():
         try:
-            text_emb = np.load(text_emb_file)
+            return np.load(filepath)
         except Exception:
-            pass
+            return None
+    return None
 
-    if image_emb_file.exists():
-        try:
-            image_emb = np.load(image_emb_file)
-        except Exception:
-            pass
-
-    return text_emb, image_emb
-
-
-@st.cache_resource
-def get_fitted_tfidf(data_size: int):
-    """Fits and caches TF-IDF vectorizer on demo texts (instant cache lookup by size)."""
-    encoder = TfidfEncoder(max_features=15000, ngram_range=(1, 2))
-    matrix = encoder.fit_transform(demo_df["title"].tolist())
-    return encoder, matrix
-
-
-# Fit TF-IDF on demo dataset once and keep cached
-tfidf_encoder, tfidf_matrix = get_fitted_tfidf(len(demo_df))
 
 # Reference product selection
 st.subheader("1️⃣ Select Reference Product")
@@ -121,7 +116,6 @@ if len(filtered_df) == 0:
     st.info("No products match your search keyword. Showing all listings.")
     filtered_df = demo_df
 
-# Group products with multiple matches to make demonstration easy
 sample_options = filtered_df.head(100)
 option_labels = {
     idx: f"[{row['posting_id']}] {row['title'][:80]}"
@@ -164,48 +158,73 @@ with ref_col2:
 
 st.divider()
 
+
 # Retrieval Function
-def retrieve_candidates(model_name: str, query_idx: int, k: int, current_alpha: float):
+def retrieve_candidates(model_name: str, prof: Dict, query_idx: int, k: int, current_alpha: float):
     """Retrieves top candidates with similarity scores for a given model."""
     if "TF-IDF" in model_name:
-        query_vec = tfidf_matrix[query_idx]
-        sims = tfidf_encoder.compute_similarity(query_vec, tfidf_matrix)
-    else:
-        # Check if saved precomputed embeddings exist
-        text_emb, image_emb = load_or_compute_demo_embeddings(len(demo_df))
-        if text_emb is not None and "Text Embeddings" in model_name:
+        query_vec = tfidf_test_matrix[query_idx]
+        sims = tfidf_encoder.compute_similarity(query_vec, tfidf_test_matrix)
+
+    elif "Text Embeddings" in model_name:
+        text_emb = load_dense_embeddings(prof.get("text_emb_file"))
+        if text_emb is not None:
             query_emb = text_emb[query_idx : query_idx + 1]
             sims = np.dot(text_emb, query_emb.T).squeeze()
-        elif image_emb is not None and "Image Embeddings" in model_name:
+        else:
+            return None, "Text embeddings file not found in data/embeddings/."
+
+    elif "Image Embeddings" in model_name:
+        image_emb = load_dense_embeddings(prof.get("image_emb_file"))
+        if image_emb is not None:
             query_emb = image_emb[query_idx : query_idx + 1]
             sims = np.dot(image_emb, query_emb.T).squeeze()
-        elif text_emb is not None and image_emb is not None and "Multimodal" in model_name:
-            fusion = MultimodalFusion(default_alpha=current_alpha)
-            fused = fusion.fuse_embeddings(text_emb, image_emb, alpha=current_alpha)
-            query_fused = fused[query_idx : query_idx + 1]
-            sims = np.dot(fused, query_fused.T).squeeze()
         else:
-            # Fallback when heavy DL embeddings are not yet generated locally:
-            # TF-IDF sparse similarity
-            query_vec = tfidf_matrix[query_idx]
-            sims = tfidf_encoder.compute_similarity(query_vec, tfidf_matrix)
+            return None, "Image embeddings file not found in data/embeddings/."
 
-    # Get top-k indices (excluding query self if desired, or including)
+    elif "Multimodal" in model_name:
+        text_emb = load_dense_embeddings(prof.get("text_emb_file"))
+        image_emb = load_dense_embeddings(prof.get("image_emb_file"))
+
+        if text_emb is None or image_emb is None:
+            return None, "Multimodal requires both text and image embeddings in data/embeddings/."
+
+        q_t = text_emb[query_idx : query_idx + 1]
+        sims_text = np.dot(text_emb, q_t.T).squeeze()
+
+        q_i = image_emb[query_idx : query_idx + 1]
+        sims_img = np.dot(image_emb, q_i.T).squeeze()
+
+        if prof.get("fusion_type") == "learned" and prof.get("weights"):
+            w_t = prof["weights"].get("w_text", 1.0)
+            w_i = prof["weights"].get("w_image", 1.0)
+            bias = prof.get("bias", 0.0)
+            sims = learned_fusion(sims_text, sims_img, w_t, w_i, bias)
+        else:
+            sims = score_fusion(sims_text, sims_img, alpha=current_alpha)
+    else:
+        return None, f"Unknown model: {model_name}"
+
     top_indices = np.argsort(sims)[::-1][:k]
     candidate_df = demo_df.iloc[top_indices].copy()
     candidate_df["score"] = sims[top_indices]
-    return candidate_df
+    return candidate_df, None
 
 
-def display_matching_view(results_model_name: str, current_alpha: float):
-    candidate_df = retrieve_candidates(results_model_name, selected_idx, top_k, current_alpha)
-    
+def display_matching_view(results_model_name: str, prof: Dict, current_alpha: float, current_threshold: float):
+    candidate_df, err = retrieve_candidates(results_model_name, prof, selected_idx, top_k, current_alpha)
+    if err:
+        st.error(f"⚠️ {err}")
+        st.info("💡 To generate all experimental embeddings, run Phase A GPU pipeline via `python scripts/kaggle_run.py`.")
+        return
+
     res = categorize_and_filter_candidates(
         query_posting_id=ref_posting_id,
         query_label_group=ref_label_group,
         retrieved_df=candidate_df,
         ground_truth_postings=ground_truth_postings,
-        threshold=threshold,
+        threshold=current_threshold,
+        full_df=demo_df,
     )
 
     # Live Metrics Bar
@@ -225,7 +244,7 @@ def display_matching_view(results_model_name: str, current_alpha: float):
     st.markdown("---")
 
     # Section 1: MATCHED PRODUCTS (Score >= threshold)
-    st.subheader(f"🟢 Matched Products (Score ≥ {threshold:.2f})")
+    st.subheader(f"🟢 Matched Products (Score ≥ {current_threshold:.2f})")
     if res.matched_products:
         cols = st.columns(min(len(res.matched_products), 4))
         for i, match in enumerate(res.matched_products):
@@ -242,7 +261,7 @@ def display_matching_view(results_model_name: str, current_alpha: float):
         st.caption("No products retrieved above the current similarity threshold.")
 
     # Section 2: SIMILAR BUT REJECTED (Hard negatives immediately below threshold)
-    st.subheader(f"⚪ Similar but Rejected (Hard Negatives < {threshold:.2f})")
+    st.subheader(f"⚪ Similar but Rejected (Hard Negatives < {current_threshold:.2f})")
     if res.similar_rejected:
         st.caption(
             "Highest-scoring candidates safely rejected because their similarity is below the threshold."
@@ -265,7 +284,7 @@ def display_matching_view(results_model_name: str, current_alpha: float):
     st.subheader("🟠 Missed True Matches")
     if res.missed_matches:
         st.caption(
-            "⚠️ True equivalent products (same label_group) that were missed because similarity fell below the threshold."
+            "⚠️ True equivalent products (same label_group) that were missed because similarity fell below the threshold or outside Top-K."
         )
         cols = st.columns(min(len(res.missed_matches), 4))
         for i, missed in enumerate(res.missed_matches):
@@ -284,12 +303,14 @@ def display_matching_view(results_model_name: str, current_alpha: float):
 
 if not enable_comparison:
     st.subheader(f"2️⃣ Results for **{model_choice}** (τ = {threshold:.2f})")
-    display_matching_view(model_choice, alpha)
+    display_matching_view(model_choice, model_profile, alpha, threshold)
 else:
     col_a, col_b = st.columns(2)
     with col_a:
         st.subheader(f"Model A: **{model_choice}**")
-        display_matching_view(model_choice, alpha)
+        display_matching_view(model_choice, model_profile, alpha, threshold)
     with col_b:
         st.subheader(f"Model B: **{comp_model}**")
-        display_matching_view(comp_model, 0.5)
+        comp_th = comp_profile.get("default_threshold", 0.50) if comp_profile else 0.50
+        comp_a = comp_profile.get("default_alpha", 0.50) if comp_profile else 0.50
+        display_matching_view(comp_model, comp_profile, comp_a, comp_th)

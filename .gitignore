@@ -12,6 +12,8 @@ data/thumbnails/*
 !data/thumbnails/.gitkeep
 data/embeddings/*
 !data/embeddings/.gitkeep
+!data/embeddings/test_*.npy
+!data/embeddings/val_*.npy
 
 # Environment & IDE
 .vscode/
@@ -20,4 +22,10 @@ data/embeddings/*
 
 .env
 !.env.example
+
+# Kaggle staging & download caches
+experiments/kaggle_output/
+data/processed/staging/
+notebooks/pulled/
+notebooks/kernel-metadata.json
 

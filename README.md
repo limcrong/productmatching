@@ -14,23 +14,19 @@ Based on the [Kaggle Shopee Product Matching dataset](https://www.kaggle.com/com
 ## 📌 Key Highlights
 
 - **Zero Data Leakage Split**: Dataset partitioned strictly by `label_group`:
-  - **Train split** (~70%): Model fitting, fine-tuning, embedding computation.
-  - **Validation split** (~15%): Hyperparameter tuning (similarity threshold $\tau$, multimodal fusion weight $\alpha$).
-  - **Test/Demo split** (~15%, ~5,100 listings): Held-out unseen product groups for unbiased reporting and interactive Streamlit demo.
-- **Experimental Progression**:
-  - **Exp 0 — Classical Baseline**: TF-IDF unigram/bigram features with sparse cosine similarity.
-  - **Exp 1 — Text Deep Learning**: Transformer embeddings (`sentence-transformers/all-MiniLM-L6-v2`, 384-d).
-  - **Exp 3 — Vision Deep Learning**: Visual CNN feature extraction (`timm` EfficientNet-B0, 1280-d).
-  - **Exp 4 — Multimodal Fusion**: Joint early vector concatenation & late weighted score fusion ($\alpha$).
-  - **Exp 5 — Final Optimization**: Validation-calibrated thresholds evaluated on unseen test groups.
-- **Dynamic Streamlit Demo**:
-  - **3-Section Precision/Recall Inspector**:
-    - 🟢 **MATCHED PRODUCTS** (Score $\ge \tau$): True Matches & False Positives.
-    - ⚪ **SIMILAR BUT REJECTED** (Score $< \tau$): Highest-scoring hard negatives safely filtered out.
-    - 🟠 **MISSED TRUE MATCHES** (Score $< \tau$): True matches missed.
-  - Interactive threshold slider demonstrating precision/recall trade-offs live!
-  - Side-by-side model comparison mode.
-  - Academic Experiment Results Dashboard with interactive Plotly charts.
+  - **Train split** (~70%): Model fitting, metric learning fine-tuning, embedding computation.
+  - **Validation split** (~15%): Hyperparameter tuning (similarity threshold $\tau$, multimodal fusion weight $\alpha$, model selection).
+  - **Test/Demo split** (~15%, 5,138 listings): Held-out unseen product groups for unbiased reporting and interactive Streamlit demo.
+- **Experimental Progression (Exps 0 to 5)**:
+  - **Exp 0 — Classical Baseline**: TF-IDF word unigrams/bigrams with sublinear TF and sparse cosine similarity.
+  - **Exp 1 — Text Deep Learning**: Comparison of pretrained dense transformers (`all-MiniLM-L6-v2` vs `paraphrase-multilingual-MiniLM-L12-v2`).
+  - **Exp 2 — Domain Adaptation**: Supervised metric learning via `MultipleNegativesRankingLoss` with group-aware batching.
+  - **Exp 3 — Vision Deep Learning**: Pretrained CNN (`timm` EfficientNet-B0) vs Vision Transformer (`openai/clip-vit-base-patch32`).
+  - **Exp 4 — Multimodal Fusion**: Validation grid sweep (Exp 4a) vs Supervised Logistic Regression learned fusion (Exp 4b).
+  - **Exp 5 — Final Optimization**: FAISS index latency benchmarks and post-processing hypothesis testing evaluated on unseen test groups.
+- **Two Complete Demonstration Modes**:
+  - **Mode 1 — Dataset Product Matcher**: 3-section inspector (🟢 Matched Products $\ge \tau$, ⚪ Similar but Rejected $<\tau$, 🟠 Missed Matches) with live threshold slider, side-by-side model comparison, and profile-calibrated hyperparameters.
+  - **Mode 2 — Visual Shopping Assistant**: Consumer-facing POC integrating SerpAPI (Google Shopping & Google Lens) and curated offline demo cases to compare prices across online merchants and surface the cheapest verified exact match while safely rejecting accessories.
 
 ---
 
@@ -38,37 +34,38 @@ Based on the [Kaggle Shopee Product Matching dataset](https://www.kaggle.com/com
 
 ```
 productmatching/
-├── .gitattributes                       # Git LFS tracking for demo_thumbnails.zip
+├── .gitattributes                       # Git LFS tracking for demo_thumbnails.zip, embeddings, and models
 ├── data/
 │   ├── demo_thumbnails.zip              # Packaged test/demo thumbnails (Git LFS)
-│   ├── shopee-product-matching.zip      # Raw dataset archive (optional, Kaggle)
-│   ├── raw/                             # Extracted train.csv / test.csv
-│   ├── processed/                       # train_split.csv, val_split.csv, test_demo_split.csv
+│   ├── processed/                       # train_split.csv, val_split.csv, test_demo_split.csv (Tracked)
 │   ├── thumbnails/                      # 224x224 thumbnails (extracted on-demand)
-│   └── embeddings/                      # Precomputed .npy embeddings
-├── app/                                 # Streamlit Multi-Page Demo
-│   ├── __init__.py                      # Package marker for cloud/local execution
+│   ├── embeddings/                      # Dense .npy embeddings (Git LFS)
+│   └── live_demo/                       # Curated offline test cases for Visual Shopping Assistant
+├── app/                                 # Streamlit Multi-Page Web Application
 │   ├── app.py                           # Landing & System Architecture
 │   ├── pages/
 │   │   ├── 1_Product_Matcher.py         # Mode 1: Core Dataset Product Matcher
-│   │   ├── 2_Experiment_Results.py      # Quantitative Benchmarks & Error Analysis
-│   │   └── 3_Live_Matcher.py            # Mode 2: Consumer-Facing Web Search Stub
+│   │   ├── 2_Experiment_Results.py      # Quantitative Benchmarks & Error Analysis Dashboard
+│   │   └── 3_Live_Matcher.py            # Mode 2: Visual Shopping Assistant POC
 │   └── components/
-│       ├── __init__.py                  # Component package marker
-│       ├── product_card.py              # Status badges & on-demand image loader
-│       └── sidebar_controls.py          # Interactive sliders & dropdowns
+│       ├── product_card.py              # Visual status badges & thumbnail loader
+│       └── sidebar_controls.py          # Dynamic sliders with calibrated defaults
 ├── src/                                 # Core Python Package
 │   ├── config.py                        # Constants & directory configurations
+│   ├── app_config.py                    # Benchmark & hyperparameter profile loader
 │   ├── data/                            # Loader, cleaner, and zero-leakage splitter
 │   ├── models/                          # TF-IDF, SentenceTransformers, timm, Fusion
-│   ├── retrieval/                       # FAISS index & precision-recall matching
-│   └── evaluation/                      # Shopee metrics & ExperimentTracker
+│   ├── retrieval/                       # FAISS index, matching logic, and SerpAPI client
+│   ├── pipeline/                        # Live candidate matching & re-ranking
+│   └── evaluation/                      # Top-K protocol, metrics, and ExperimentTracker
 ├── notebooks/
-│   ├── README.md                        # Kaggle GPU workflow guide
-│   └── kaggle_pipeline.py               # Self-contained end-to-end Kaggle pipeline
+│   ├── README.md                        # Kaggle GPU execution guide
+│   ├── kaggle_pipeline.py               # Self-contained end-to-end GPU pipeline (Exps 0 to 5)
+│   └── kernel-metadata.json             # Kaggle kernel configuration
 ├── scripts/
 │   ├── extract_data.py                  # Extracts CSVs and creates test thumbnails
-│   └── run_experiments.py              # Local experiment evaluation runner
+│   ├── run_experiments.py              # Local baseline & FAISS latency runner
+│   └── kaggle_run.py                    # Automated Kaggle kernel push, monitor & artifact sync
 ├── requirements.txt
 └── README.md
 ```

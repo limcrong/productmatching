@@ -1,0 +1,20 @@
+{
+  "text_model": "all-MiniLM-L6-v2 (fine-tuned)",
+  "image_model": "timm / EfficientNet-B0",
+  "fusion_type": "learned",
+  "threshold": 0.75,
+  "top_k": 50,
+  "parameters": {
+    "w_text": 9.463388336669517,
+    "w_image": 7.808722705879871,
+    "bias": -8.197978989829934,
+    "alpha": 0.5478999245290115
+  },
+  "model_files": {
+    "text_ft_dir": "models/text_ft",
+    "test_text_emb": "test_text_selected.npy",
+    "test_image_emb": "test_image_selected.npy",
+    "val_text_emb": "val_text_selected.npy",
+    "val_image_emb": "val_image_selected.npy"
+  }
+}

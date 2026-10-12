@@ -106,6 +106,57 @@ def run_experiment_0_tfidf():
     print(f"Saved benchmark to {EXPERIMENTS_RESULTS_JSON}")
 
 
+def run_faiss_benchmark(n_samples: int = 5138, d: int = 384, top_k: int = 50):
+    import time
+    from src.retrieval.faiss_index import FAISSIndex
+
+    print("=" * 60)
+    print("FAISS vs. Brute-Force Retrieval Efficiency Benchmark")
+    print("=" * 60)
+    print(f"Database Size:       {n_samples:,} vectors")
+    print(f"Embedding Dimension: {d}")
+    print(f"Top-K:               {top_k}")
+
+    # Generate synthetic unit-normalized vectors
+    np.random.seed(42)
+    db_vectors = np.random.randn(n_samples, d).astype(np.float32)
+    db_vectors /= np.linalg.norm(db_vectors, axis=1, keepdims=True)
+
+    query_vectors = db_vectors[:200]  # evaluate on 200 queries
+
+    # 1. Brute-force dot product
+    start = time.perf_counter()
+    bf_sims = np.dot(query_vectors, db_vectors.T)
+    bf_top_indices = np.argpartition(-bf_sims, top_k - 1, axis=1)[:, :top_k]
+    bf_time = time.perf_counter() - start
+    bf_ms_per_q = (bf_time / len(query_vectors)) * 1000
+    bf_qps = len(query_vectors) / bf_time
+
+    # 2. FAISS IndexFlatIP
+    index = FAISSIndex(d=d, index_type="flat")
+    index.add(db_vectors)
+
+    start = time.perf_counter()
+    faiss_scores, faiss_indices = index.search(query_vectors, top_k=top_k)
+    faiss_time = time.perf_counter() - start
+    faiss_ms_per_q = (faiss_time / len(query_vectors)) * 1000
+    faiss_qps = len(query_vectors) / faiss_time
+
+    # Recall@K check
+    recalls = []
+    for i in range(len(query_vectors)):
+        bf_set = set(bf_top_indices[i])
+        faiss_set = set(faiss_indices[i])
+        recalls.append(len(bf_set.intersection(faiss_set)) / top_k)
+    recall_at_k = float(np.mean(recalls))
+
+    print("-" * 60)
+    print(f"Brute Force Latency: {bf_ms_per_q:.3f} ms/query ({bf_qps:.1f} QPS)")
+    print(f"FAISS IndexFlatIP:   {faiss_ms_per_q:.3f} ms/query ({faiss_qps:.1f} QPS)")
+    print(f"Recall@{top_k}:            {recall_at_k * 100:.1f}%")
+    print("=" * 60)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run product matching experiments")
     parser.add_argument(
@@ -114,9 +165,16 @@ def main():
         default=0,
         help="Experiment number to run (0: TF-IDF, 1: Text DL, etc.)",
     )
+    parser.add_argument(
+        "--benchmark-faiss",
+        action="store_true",
+        help="Run FAISS vs Brute Force retrieval speed & recall benchmark",
+    )
     args = parser.parse_args()
 
-    if args.experiment == 0:
+    if args.benchmark_faiss:
+        run_faiss_benchmark()
+    elif args.experiment == 0:
         run_experiment_0_tfidf()
     else:
         print(f"Experiment {args.experiment} is configured for GPU execution (Kaggle/Colab).")

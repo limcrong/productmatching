@@ -47,6 +47,21 @@ def score_fusion(
     return alpha * text_similarities + (1.0 - alpha) * image_similarities
 
 
+def learned_fusion(
+    text_similarities: np.ndarray,
+    image_similarities: np.ndarray,
+    w_text: float,
+    w_image: float,
+    bias: float,
+) -> np.ndarray:
+    """
+    Supervised late fusion using learned logistic regression parameters:
+    P(match) = sigmoid(w_text * s_text + w_image * s_image + bias)
+    """
+    logits = w_text * text_similarities + w_image * image_similarities + bias
+    return 1.0 / (1.0 + np.exp(-np.clip(logits, -15.0, 15.0)))
+
+
 class MultimodalFusion:
     """
     Unified manager for multimodal fusion strategies.
@@ -72,3 +87,13 @@ class MultimodalFusion:
     ) -> np.ndarray:
         current_alpha = self.default_alpha if alpha is None else alpha
         return score_fusion(text_sims, image_sims, current_alpha)
+
+    def fuse_learned(
+        self,
+        text_sims: np.ndarray,
+        image_sims: np.ndarray,
+        w_text: float,
+        w_image: float,
+        bias: float,
+    ) -> np.ndarray:
+        return learned_fusion(text_sims, image_sims, w_text, w_image, bias)

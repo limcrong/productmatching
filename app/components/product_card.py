@@ -62,7 +62,7 @@ def render_product_card(
         # Display image
         if img_path and img_path.exists():
             try:
-                st.image(str(img_path), use_container_width=True)
+                st.image(str(img_path), width="stretch")
             except Exception:
                 st.info("🖼️ Image unavailable")
         else:
