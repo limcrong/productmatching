@@ -25,8 +25,8 @@ Based on the [Kaggle Shopee Product Matching dataset](https://www.kaggle.com/com
   - **Exp 4 — Multimodal Fusion**: Validation grid sweep (Exp 4a) vs Supervised Logistic Regression learned fusion (Exp 4b).
   - **Exp 5 — Final Optimization**: FAISS index latency benchmarks and post-processing hypothesis testing evaluated on unseen test groups.
 - **Two Complete Demonstration Modes**:
-  - **Mode 1 — Dataset Product Matcher**: 3-section inspector (🟢 Matched Products $\ge \tau$, ⚪ Similar but Rejected $<\tau$, 🟠 Missed Matches) with live threshold slider, side-by-side model comparison, and profile-calibrated hyperparameters.
-  - **Mode 2 — Visual Shopping Assistant**: Consumer-facing POC integrating SerpAPI (Google Shopping & Google Lens) and curated offline demo cases to compare prices across online merchants and surface the cheapest verified exact match while safely rejecting accessories.
+  - **Mode 1 — Dataset Product Matcher**: 3-section inspector (🟢 Matched Products $\ge \tau$, ⚪ Similar but Rejected $<\tau$, 🟠 Missed Matches) with live threshold slider, side-by-side model comparison, and profile-calibrated hyperparameters on held-out Kaggle Shopee data.
+  - **Mode 2 — Image-Assisted Cross-Merchant Product Matching and Price Comparison**: Consumer-facing POC demonstrating how Google Shopping candidate retrieval combined with our trained multimodal model filters accessories and mismatched variants to surface the lowest price among retrieved matches, with dual-model (Text-Only vs Multimodal) explainability.
 
 ---
 
@@ -40,13 +40,13 @@ productmatching/
 │   ├── processed/                       # train_split.csv, val_split.csv, test_demo_split.csv (Tracked)
 │   ├── thumbnails/                      # 224x224 thumbnails (extracted on-demand)
 │   ├── embeddings/                      # Dense .npy embeddings (Git LFS)
-│   └── live_demo/                       # Curated offline test cases for Visual Shopping Assistant
+│   └── live_demo/                       # Curated offline test cases for Image-Assisted Matcher POC
 ├── app/                                 # Streamlit Multi-Page Web Application
 │   ├── app.py                           # Landing & System Architecture
 │   ├── pages/
 │   │   ├── 1_Product_Matcher.py         # Mode 1: Core Dataset Product Matcher
 │   │   ├── 2_Experiment_Results.py      # Quantitative Benchmarks & Error Analysis Dashboard
-│   │   └── 3_Live_Matcher.py            # Mode 2: Visual Shopping Assistant POC
+│   │   └── 3_Live_Matcher.py            # Mode 2: Image-Assisted Product Matching & Price Comparison POC
 │   └── components/
 │       ├── product_card.py              # Visual status badges & thumbnail loader
 │       └── sidebar_controls.py          # Dynamic sliders with calibrated defaults

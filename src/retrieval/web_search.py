@@ -34,11 +34,20 @@ class WebCandidate:
     link: str
     thumbnail_url: Optional[str]
     image: Optional[Image.Image] = None
+    retrieval_rank: int = 1
     similarity_text: float = 0.0
-    similarity_image: float = 0.0
+    similarity_image: Optional[float] = None
     similarity_fused: float = 0.0
     is_match: bool = False
     match_reason: str = ""
+    modality: str = "multimodal"
+    # Dual-model evaluation tracking for academic explainability (Text-Only vs Multimodal)
+    text_only_sim: float = 0.0
+    text_only_is_match: bool = False
+    text_only_reason: str = ""
+    multimodal_sim: float = 0.0
+    multimodal_is_match: bool = False
+    multimodal_reason: str = ""
 
 
 def get_serpapi_key() -> Optional[str]:
@@ -53,13 +62,27 @@ def get_serpapi_key() -> Optional[str]:
     return key
 
 
-def fetch_candidate_image(url: str, timeout: float = 2.0) -> Optional[Image.Image]:
-    """Downloads candidate thumbnail safely within timeout."""
-    if not url:
+def fetch_candidate_image(url_or_path: str, timeout: float = 3.0) -> Optional[Image.Image]:
+    """
+    Safely loads candidate image from a local file path or downloads thumbnail within timeout.
+    """
+    if not url_or_path:
         return None
+
+    # Check local filesystem first
+    try:
+        p = Path(url_or_path)
+        if not p.is_absolute():
+            p = ROOT_DIR / url_or_path
+        if p.exists() and p.is_file():
+            return Image.open(p).convert("RGB")
+    except Exception:
+        pass
+
+    # Fetch from URL if local resolution is not applicable
     try:
         req = urllib.request.Request(
-            url,
+            url_or_path,
             headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -67,6 +90,7 @@ def fetch_candidate_image(url: str, timeout: float = 2.0) -> Optional[Image.Imag
             return Image.open(io.BytesIO(data)).convert("RGB")
     except Exception:
         return None
+
 
 
 import re
@@ -197,7 +221,7 @@ def search_google_shopping(
     candidates = []
     urls_to_fetch = []
 
-    for item in shopping_results[:max_results]:
+    for idx, item in enumerate(shopping_results[:max_results]):
         title = item.get("title", "")
         merchant = item.get("source") or item.get("merchant") or item.get("seller") or "Online Merchant"
         price, currency = extract_price_and_currency(item, country=country)
@@ -213,6 +237,7 @@ def search_google_shopping(
             currency=currency,
             link=link,
             thumbnail_url=thumb_url,
+            retrieval_rank=idx + 1,
         )
         candidates.append(cand)
         urls_to_fetch.append(thumb_url)
@@ -287,7 +312,7 @@ def search_google_lens(
     candidates = []
     urls_to_fetch = []
 
-    for item in visual_matches[:max_results]:
+    for idx, item in enumerate(visual_matches[:max_results]):
         title = item.get("title", "")
         merchant = item.get("source") or item.get("merchant") or "Online Merchant"
         price, currency = extract_price_and_currency(item, country=country)
@@ -303,6 +328,7 @@ def search_google_lens(
             currency=currency,
             link=link,
             thumbnail_url=thumb_url,
+            retrieval_rank=idx + 1,
         )
         candidates.append(cand)
         urls_to_fetch.append(thumb_url)

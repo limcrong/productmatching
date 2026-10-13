@@ -2,6 +2,7 @@
   "sony_headphones": {
     "query_title": "Sony WH-1000XM5 Wireless Noise Cancelling Headphones",
     "query_image_url": "https://m.media-amazon.com/images/I/51aXvjzcukL._AC_SL1200_.jpg",
+    "image_path": "data/live_demo/images/sony_query.jpg",
     "candidates": [
       {
         "title": "Sony WH-1000XM5 Wireless Noise-Cancelling Over-Ear Headphones (Black)",
@@ -9,7 +10,8 @@
         "price": 389.0,
         "currency": "SGD",
         "link": "https://www.amazon.sg",
-        "thumbnail_url": "https://m.media-amazon.com/images/I/51aXvjzcukL._AC_SL1200_.jpg"
+        "thumbnail_url": "data/live_demo/images/sony_cand_0.jpg",
+        "image_path": "data/live_demo/images/sony_cand_0.jpg"
       },
       {
         "title": "Sony WH1000XM5/B Premium Noise Canceling Wireless Over-the-Ear Headphones, Black",
@@ -17,7 +19,8 @@
         "price": 369.0,
         "currency": "SGD",
         "link": "https://shopee.sg",
-        "thumbnail_url": "https://m.media-amazon.com/images/I/51aXvjzcukL._AC_SL1200_.jpg"
+        "thumbnail_url": "data/live_demo/images/sony_cand_1.jpg",
+        "image_path": "data/live_demo/images/sony_cand_1.jpg"
       },
       {
         "title": "Sony WH-1000XM5 Active Noise Cancelling Wireless Headphones - Silver",
@@ -25,7 +28,8 @@
         "price": 399.0,
         "currency": "SGD",
         "link": "https://www.lazada.sg",
-        "thumbnail_url": "https://m.media-amazon.com/images/I/51KGPDTdfTL._AC_SL1200_.jpg"
+        "thumbnail_url": "data/live_demo/images/sony_cand_2.jpg",
+        "image_path": "data/live_demo/images/sony_cand_2.jpg"
       },
       {
         "title": "Hard Travel Case Compatible with Sony WH-1000XM5 Wireless Headphones Storage Bag",
@@ -33,7 +37,8 @@
         "price": 19.9,
         "currency": "SGD",
         "link": "https://shopee.sg",
-        "thumbnail_url": "https://m.media-amazon.com/images/I/71u+O9M6fIL._AC_SL1500_.jpg"
+        "thumbnail_url": "data/live_demo/images/sony_cand_3.jpg",
+        "image_path": "data/live_demo/images/sony_cand_3.jpg"
       },
       {
         "title": "Replacement Ear Pads Cushions for Sony WH-1000XM5 / XM4 Headphone",
@@ -41,13 +46,15 @@
         "price": 12.5,
         "currency": "SGD",
         "link": "https://lazada.sg",
-        "thumbnail_url": "https://m.media-amazon.com/images/I/61N3vE3i-wL._AC_SL1000_.jpg"
+        "thumbnail_url": "data/live_demo/images/sony_cand_4.jpg",
+        "image_path": "data/live_demo/images/sony_cand_4.jpg"
       }
     ]
   },
   "iphone_15_pro": {
     "query_title": "Apple iPhone 15 Pro 128GB Natural Titanium",
     "query_image_url": "https://m.media-amazon.com/images/I/81+GIkwqLUL._AC_SL1500_.jpg",
+    "image_path": "data/live_demo/images/iphone_query.jpg",
     "candidates": [
       {
         "title": "Apple iPhone 15 Pro (128 GB) - Natural Titanium",
@@ -55,7 +62,8 @@
         "price": 1499.0,
         "currency": "SGD",
         "link": "https://apple.com",
-        "thumbnail_url": "https://m.media-amazon.com/images/I/81+GIkwqLUL._AC_SL1500_.jpg"
+        "thumbnail_url": "data/live_demo/images/iphone_cand_0.jpg",
+        "image_path": "data/live_demo/images/iphone_cand_0.jpg"
       },
       {
         "title": "Apple iPhone 15 Pro 128GB (Natural Titanium) Telco Set Local Warranty",
@@ -63,7 +71,8 @@
         "price": 1388.0,
         "currency": "SGD",
         "link": "https://mobilesquare.com.sg",
-        "thumbnail_url": "https://m.media-amazon.com/images/I/81+GIkwqLUL._AC_SL1500_.jpg"
+        "thumbnail_url": "data/live_demo/images/iphone_cand_1.jpg",
+        "image_path": "data/live_demo/images/iphone_cand_1.jpg"
       },
       {
         "title": "iPhone 15 Pro Clear Case with MagSafe Shockproof Protective Cover",
@@ -71,7 +80,8 @@
         "price": 28.0,
         "currency": "SGD",
         "link": "https://shopee.sg",
-        "thumbnail_url": "https://m.media-amazon.com/images/I/61y8v42jPQL._AC_SL1500_.jpg"
+        "thumbnail_url": "data/live_demo/images/iphone_cand_2.jpg",
+        "image_path": "data/live_demo/images/iphone_cand_2.jpg"
       },
       {
         "title": "Tempered Glass Screen Protector 9H for iPhone 15 Pro (2 Pack)",
@@ -79,7 +89,8 @@
         "price": 9.9,
         "currency": "SGD",
         "link": "https://lazada.sg",
-        "thumbnail_url": "https://m.media-amazon.com/images/I/71N1V1U8B1L._AC_SL1500_.jpg"
+        "thumbnail_url": "data/live_demo/images/iphone_cand_3.jpg",
+        "image_path": "data/live_demo/images/iphone_cand_3.jpg"
       }
     ]
   }

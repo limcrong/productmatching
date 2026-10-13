@@ -124,9 +124,9 @@ with n2:
 
 with n3:
     with st.container(border=True):
-        st.markdown("### 🌐 3. Live Web Matcher")
+        st.markdown("### 🌐 3. Image-Assisted Shopping Matcher")
         st.write(
-            "Consumer-facing extension stub demonstrating how trained product matching models"
-            " can group cross-merchant listings in real-world search."
+            "Consumer-facing POC demonstrating how Google Shopping candidate retrieval"
+            " combined with our trained multimodal model filters accessories and enables cross-merchant price comparison."
         )
-        st.page_link("pages/3_Live_Matcher.py", label="Inspect Live Web Stub →", icon="🌐")
+        st.page_link("pages/3_Live_Matcher.py", label="Open Shopping Matcher POC →", icon="🌐")
