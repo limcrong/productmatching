@@ -104,8 +104,8 @@ fusion_model_choice = st.sidebar.selectbox(
 
 is_learned = "Learned" in fusion_model_choice
 fusion_type = "learned" if is_learned else "grid"
-default_th = 0.95 if is_learned else 0.70
-default_alpha = 0.75 if not is_learned else float(mm_profile.get("default_alpha", 0.55))
+default_th = 0.75 if is_learned else 0.55
+default_alpha = 0.60 if not is_learned else float(mm_profile.get("default_alpha", 0.55))
 
 th_slider = st.sidebar.slider(
     "Match Threshold (τ):",
@@ -113,7 +113,7 @@ th_slider = st.sidebar.slider(
     max_value=1.0,
     value=float(default_th),
     step=0.01,
-    help=f"Recommended threshold for filtering variants is {default_th:.2f}.",
+    help=f"Calibrated validation threshold is {default_th:.2f} (from academic evaluation).",
 )
 st.sidebar.caption(f"🎯 Threshold τ: **{th_slider:.2f}**")
 
@@ -124,13 +124,13 @@ if not is_learned:
         max_value=1.0,
         value=float(default_alpha),
         step=0.05,
-        help="Higher α increases focus on exact text specifications (e.g. stage, capacity, model) over generic visual packaging.",
+        help="Higher α increases focus on exact text specifications. Validation optimum is α=0.60.",
     )
     st.sidebar.caption(f"Text Weight (α): **{alpha_slider:.2f}** | Image Weight: **{1.0 - alpha_slider:.2f}**")
 else:
     alpha_slider = default_alpha
-    st.sidebar.info("🤖 **Learned Logistic Weights:** w_text = 9.46, w_image = 7.81, bias = -8.20")
-    st.sidebar.caption(f"Sigmoid probability calibration requires high τ (≥ 0.95) because candidate search results already share partial text.")
+    st.sidebar.info("🤖 **Learned Logistic Weights (Exp 4b):** w_text = 9.463, w_image = 7.809, bias = -8.198")
+    st.sidebar.caption("Supervised logistic fusion evaluated on Kaggle held-out split (Test F1 = 0.8629).")
 
 only_show_priced = st.sidebar.checkbox(
     "Only Show Listings With Prices",
@@ -155,17 +155,22 @@ if "Curated Demo" in search_mode:
     )
     active_case = curated_cases.get(selected_case_key, {})
     default_title = active_case.get("query_title", "")
-    default_img_url = active_case.get("query_image_url", "")
+    default_img_ref = active_case.get("image_path") or active_case.get("query_image_url", "")
+    curated_preview_img = fetch_candidate_image(default_img_ref)
 
     col_in1, col_in2 = st.columns([1, 2])
     with col_in1:
-        if default_img_url:
-            st.image(default_img_url, caption="Query Product Image", width="stretch")
+        if curated_preview_img is not None:
+            st.image(curated_preview_img, caption="Query Product Image (Curated Example)", width="stretch")
+        elif default_img_ref:
+            st.image(default_img_ref, caption="Query Product Image (Curated Example)", width="stretch")
     with col_in2:
         query_title = st.text_input("Product Title / Model Hint:", value=default_title)
         st.caption("💡 Curated scenarios include exact models from multiple merchants alongside accessories (cases, screen protectors).")
+        st.info("📌 **Curated Example Notice:** Zero-cost offline mode using cached local thumbnails. Prices and offers are illustrative evaluation samples.")
 
     execute_search = st.button("🚀 Match & Compare Prices across Merchants", type="primary")
+
 
 else:
     # Live Search Mode
@@ -227,10 +232,12 @@ if execute_search:
     candidates = []
 
     if "Curated Demo" in search_mode:
-        status_box.write("⚡ Loading curated test scenario listings...")
+        status_box.write("⚡ Loading curated test scenario listings & cached thumbnails...")
         progress_bar.progress(30)
         raw_cands = active_case.get("candidates", [])
         for c in raw_cands:
+            c_img_ref = c.get("image_path") or c.get("thumbnail_url")
+            c_img = fetch_candidate_image(c_img_ref)
             candidates.append(
                 WebCandidate(
                     title=c["title"],
@@ -238,10 +245,12 @@ if execute_search:
                     price=c.get("price"),
                     currency=c.get("currency", "SGD"),
                     link=c.get("link", "#"),
-                    thumbnail_url=c.get("thumbnail_url"),
+                    thumbnail_url=c_img_ref,
+                    image=c_img,
                 )
             )
-        query_image = None
+        q_img_ref = active_case.get("image_path") or active_case.get("query_image_url")
+        query_image = fetch_candidate_image(q_img_ref)
         progress_bar.progress(60)
     else:
         if not api_key:
@@ -300,7 +309,7 @@ if execute_search:
     status_box.write(f"📦 Step 3/4: Retrieved {len(candidates)} listings across online merchants.")
     progress_bar.progress(75)
 
-    status_box.write("🧠 Step 4/4: Running domain-adapted Transformer model & filtering hard negatives...")
+    status_box.write("🧠 Step 4/4: Running multimodal deep learning inference (EfficientNet-B0 + MiniLM)...")
     progress_bar.progress(85)
 
     # Match and rank candidates
@@ -327,6 +336,9 @@ if execute_search:
     )
 
     st.subheader("2️⃣ Cross-Merchant Comparison Results")
+
+    if "Curated Demo" in search_mode:
+        st.info("📌 **Curated Evaluation Notice:** Prices and merchant listings are illustrative offline samples for model verification, not real-time live quotes.")
 
     if matched:
         # Pick lowest price offer among matched products
@@ -364,8 +376,9 @@ if execute_search:
 
                     st.markdown(f"### {price_display}")
                     reason_badge = f" • *{cand.match_reason}*" if cand.match_reason else ""
+                    img_str = f"{cand.similarity_image:.2f}" if cand.similarity_image is not None else "N/A (Text Fallback)"
                     st.caption(
-                        f"Score: `{cand.similarity_fused:.2f}` (Text: `{cand.similarity_text:.2f}` | Img: `{cand.similarity_image:.2f}`){reason_badge}"
+                        f"Score: `{cand.similarity_fused:.2f}` (Text: `{cand.similarity_text:.2f}` | Img: `{img_str}`){reason_badge}"
                     )
                     st.link_button("View Listing →", cand.link)
     else:
@@ -393,8 +406,10 @@ if execute_search:
                     if rej_price_str:
                         st.caption(rej_price_str)
                     st.error(f"✗ Filtered (Model Score: `{rej.similarity_fused:.3f}` < `{th_slider:.2f}`)")
-                    st.caption(f"Text Sim: `{rej.similarity_text:.3f}` | Img Sim: `{rej.similarity_image:.3f}`")
+                    rej_img_str = f"{rej.similarity_image:.3f}" if rej.similarity_image is not None else "N/A (Text Fallback)"
+                    st.caption(f"Text Sim: `{rej.similarity_text:.3f}` | Img Sim: `{rej_img_str}` • *{rej.match_reason}*")
         if len(rejected) > display_limit:
             with st.expander(f"View remaining {len(rejected) - display_limit} rejected items"):
                 for rej in rejected[display_limit:]:
                     st.write(f"- **{rej.merchant}**: {rej.title} (Score: `{rej.similarity_fused:.3f}`)")
+

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Tuple
 from PIL import Image
 import numpy as np
 
@@ -46,27 +46,43 @@ class ImageEncoder:
     @torch.no_grad()
     def encode_images(
         self,
-        image_paths: List[Union[str, Path]],
+        images_or_paths: List[Union[str, Path, Image.Image, None]],
         batch_size: int = 32,
         normalize: bool = True,
-    ) -> np.ndarray:
+        return_mask: bool = False,
+    ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         """
-        Processes a list of image paths and returns an array of embeddings (N, D).
+        Processes a list of image paths or PIL Image instances and returns an array of embeddings (N, D).
+        If return_mask is True, also returns a boolean array indicating valid (non-corrupted) images.
         """
         all_embeddings = []
+        all_masks = []
 
-        for i in range(0, len(image_paths), batch_size):
-            batch_paths = image_paths[i : i + batch_size]
+        for i in range(0, len(images_or_paths), batch_size):
+            batch_items = images_or_paths[i : i + batch_size]
             batch_tensors = []
+            batch_mask = []
 
-            for p in batch_paths:
-                try:
-                    img = Image.open(p).convert("RGB")
-                    tensor = self.transforms(img)
-                except Exception:
-                    # In case of corrupted or missing image, use a zero placeholder
+            for item in batch_items:
+                tensor = None
+                is_valid = False
+                if item is not None:
+                    try:
+                        if isinstance(item, Image.Image):
+                            img = item.convert("RGB")
+                        else:
+                            img = Image.open(item).convert("RGB")
+                        tensor = self.transforms(img)
+                        is_valid = True
+                    except Exception:
+                        tensor = None
+                        is_valid = False
+
+                if tensor is None:
                     tensor = torch.zeros((3, 224, 224), dtype=torch.float32)
+
                 batch_tensors.append(tensor)
+                batch_mask.append(is_valid)
 
             stacked = torch.stack(batch_tensors).to(self.device)
             feats = self.model(stacked)
@@ -75,8 +91,15 @@ class ImageEncoder:
                 feats = torch.nn.functional.normalize(feats, p=2, dim=1)
 
             all_embeddings.append(feats.cpu().numpy())
+            all_masks.extend(batch_mask)
 
         if not all_embeddings:
-            return np.empty((0, 0), dtype=np.float32)
+            empty_emb = np.empty((0, 0), dtype=np.float32)
+            empty_mask = np.empty((0,), dtype=bool)
+            return (empty_emb, empty_mask) if return_mask else empty_emb
 
-        return np.vstack(all_embeddings).astype(np.float32)
+        embeddings = np.vstack(all_embeddings).astype(np.float32)
+        valid_mask = np.array(all_masks, dtype=bool)
+
+        return (embeddings, valid_mask) if return_mask else embeddings
+

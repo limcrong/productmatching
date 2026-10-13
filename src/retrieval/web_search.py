@@ -35,10 +35,11 @@ class WebCandidate:
     thumbnail_url: Optional[str]
     image: Optional[Image.Image] = None
     similarity_text: float = 0.0
-    similarity_image: float = 0.0
+    similarity_image: Optional[float] = None
     similarity_fused: float = 0.0
     is_match: bool = False
     match_reason: str = ""
+    modality: str = "multimodal"
 
 
 def get_serpapi_key() -> Optional[str]:
@@ -53,13 +54,27 @@ def get_serpapi_key() -> Optional[str]:
     return key
 
 
-def fetch_candidate_image(url: str, timeout: float = 2.0) -> Optional[Image.Image]:
-    """Downloads candidate thumbnail safely within timeout."""
-    if not url:
+def fetch_candidate_image(url_or_path: str, timeout: float = 3.0) -> Optional[Image.Image]:
+    """
+    Safely loads candidate image from a local file path or downloads thumbnail within timeout.
+    """
+    if not url_or_path:
         return None
+
+    # Check local filesystem first
+    try:
+        p = Path(url_or_path)
+        if not p.is_absolute():
+            p = ROOT_DIR / url_or_path
+        if p.exists() and p.is_file():
+            return Image.open(p).convert("RGB")
+    except Exception:
+        pass
+
+    # Fetch from URL if local resolution is not applicable
     try:
         req = urllib.request.Request(
-            url,
+            url_or_path,
             headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -67,6 +82,7 @@ def fetch_candidate_image(url: str, timeout: float = 2.0) -> Optional[Image.Imag
             return Image.open(io.BytesIO(data)).convert("RGB")
     except Exception:
         return None
+
 
 
 import re
