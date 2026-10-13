@@ -1,5 +1,6 @@
 import sys
 import io
+import re
 from pathlib import Path
 from PIL import Image
 
@@ -17,11 +18,16 @@ from dotenv import load_dotenv
 
 from src.app_config import get_model_profile
 
-# Force reload web_search in long-running Streamlit processes to pick up newly added functions
+# Force reload modules in long-running Streamlit processes to pick up newly added functions
 import importlib
 import src.retrieval.web_search
+import src.pipeline.live_matcher
 try:
     importlib.reload(src.retrieval.web_search)
+except Exception:
+    pass
+try:
+    importlib.reload(src.pipeline.live_matcher)
 except Exception:
     pass
 
@@ -36,7 +42,6 @@ from src.retrieval.web_search import (
 try:
     from src.retrieval.web_search import detect_title_from_image, fetch_candidate_image
 except ImportError:
-    # Bulletproof fallback in case Streamlit process holds stale in-memory module
     def detect_title_from_image(image_url: str, api_key: str, country: str = "sg"):
         return None
 
@@ -51,18 +56,38 @@ except ImportError:
         except Exception:
             return None
 
-from src.pipeline.live_matcher import match_and_rank_candidates
+from src.pipeline.live_matcher import (
+    match_and_rank_candidates,
+    categorize_model_disagreements,
+    group_candidates_by_currency,
+)
 
 load_dotenv(ROOT_DIR / ".env")
 
 st.set_page_config(
-    page_title="Shopping Assistant | Live Matcher",
+    page_title="Image-Assisted Product Matching | Shopping Assistant",
     page_icon="🌐",
     layout="wide"
 )
 
-st.title("🌐 Visual Shopping Assistant")
-st.caption("Consumer-Facing Cross-Merchant Comparison & Price Discovery POC (Slides 13B & 14)")
+# Refined Title and Intended Academic / Consumer Positioning
+st.title("🌐 Image-Assisted Cross-Merchant Product Matching & Price Comparison")
+st.caption(
+    "Consumer-Facing Proof of Concept (POC) | Pattern Recognition Systems Practice Module | NUS ISS MTech in AI Systems"
+)
+
+# Workflow Architecture Callout
+with st.container(border=True):
+    st.markdown(
+        """
+        **System Architecture & Value Distinction:**
+        1. **Stage 1 — Candidate Retrieval (Google Shopping / SerpAPI)**: Google Shopping retrieves real-world merchant listings using the product title hint. *(Note: Google Shopping supplies potential listings based on keywords, which frequently include accessories, replacement parts, and mismatched variants. It does not classify candidates as exact matches.)*
+        2. **Stage 2 — Identity Matching & Filtering (Trained Multimodal Model)**: Our trained model evaluates the user's title and image against candidate listings to filter accessories and incorrect variants.
+        3. **Stage 3 — Cross-Merchant Price Comparison**: Compares available prices strictly among retrieved and accepted product matches to highlight the lowest available offer.
+        
+        *Disclaimer: Live shopping results represent model-based predictions rather than certified identical matches. Price discovery applies only to retrieved and accepted listings.*
+        """
+    )
 
 # Profile and Calibrated Defaults
 mm_profile = get_model_profile("Multimodal")
@@ -74,7 +99,7 @@ search_mode = st.sidebar.radio(
     "Search Mode",
     options=["⚡ Curated Demo Scenarios (Zero Cost)", "🔍 Live Web Search (SerpAPI)"],
     index=0,
-    help="Select Curated Demos for instant, quota-free testing or Live Web Search for real web crawling.",
+    help="Select Curated Demos for instant, quota-free offline evaluation or Live Web Search for real web crawling.",
 )
 
 api_key = get_serpapi_key()
@@ -108,14 +133,24 @@ default_th = 0.75 if is_learned else 0.55
 default_alpha = 0.60 if not is_learned else float(mm_profile.get("default_alpha", 0.55))
 
 th_slider = st.sidebar.slider(
-    "Match Threshold (τ):",
+    "Multimodal Threshold (τ_mm):",
     min_value=0.0,
     max_value=1.0,
     value=float(default_th),
     step=0.01,
     help=f"Calibrated validation threshold is {default_th:.2f} (from academic evaluation).",
 )
-st.sidebar.caption(f"🎯 Threshold τ: **{th_slider:.2f}**")
+st.sidebar.caption(f"🎯 Multimodal Decision τ: **{th_slider:.2f}**")
+
+text_th_slider = st.sidebar.slider(
+    "Text-Only Threshold (τ_text):",
+    min_value=0.0,
+    max_value=1.0,
+    value=0.60,
+    step=0.01,
+    help="Calibrated threshold for fine-tuned SentenceTransformer (Exp 2 domain adaptation). Used for model comparison.",
+)
+st.sidebar.caption(f"📝 Text-Only Baseline τ: **{text_th_slider:.2f}**")
 
 if not is_learned:
     alpha_slider = st.sidebar.slider(
@@ -138,14 +173,14 @@ only_show_priced = st.sidebar.checkbox(
     help="Hides catalog cards or entries without an available merchant price.",
 )
 
-# Main Interface
+# Main Interface: Input Selection
 st.subheader("1️⃣ Product Input (Image & Title Hint)")
 
 curated_cases = load_curated_demo_cases()
 
 if "Curated Demo" in search_mode:
     case_names = {
-        "sony_headphones": "Sony WH-1000XM5 Noise Cancelling Headphones",
+        "sony_headphones": "Sony WH-1000XM5 Wireless Noise Cancelling Headphones",
         "iphone_15_pro": "Apple iPhone 15 Pro 128GB Natural Titanium",
     }
     selected_case_key = st.selectbox(
@@ -166,11 +201,10 @@ if "Curated Demo" in search_mode:
             st.image(default_img_ref, caption="Query Product Image (Curated Example)", width="stretch")
     with col_in2:
         query_title = st.text_input("Product Title / Model Hint:", value=default_title)
-        st.caption("💡 Curated scenarios include exact models from multiple merchants alongside accessories (cases, screen protectors).")
+        st.caption("💡 Curated scenarios include exact models from multiple merchants alongside accessories (cases, ear pads).")
         st.info("📌 **Curated Example Notice:** Zero-cost offline mode using cached local thumbnails. Prices and offers are illustrative evaluation samples.")
 
     execute_search = st.button("🚀 Match & Compare Prices across Merchants", type="primary")
-
 
 else:
     # Live Search Mode
@@ -181,7 +215,7 @@ else:
         query_title = st.text_input(
             "Product Title / Search Keyword (Google Shopping):",
             value="Sony WH-1000XM5",
-            help="Enter product name/model. This queries Google Shopping tab for verified merchant offers.",
+            help="Enter product name/model. This queries Google Shopping tab for candidate merchant offers.",
         )
     with col_engine:
         search_engine_choice = st.selectbox(
@@ -191,7 +225,7 @@ else:
             help="Google Shopping tab returns store listings with prices. Google Lens performs open web reverse-image matching.",
         )
 
-    st.markdown("**Optional Query Image (for Multimodal Visual Comparison):**")
+    st.markdown("**Query Image (for Multimodal Visual Comparison):**")
     col_upload, col_url = st.columns(2)
     with col_upload:
         uploaded_file = st.file_uploader(
@@ -226,7 +260,7 @@ st.divider()
 
 # Execution and Results
 if execute_search:
-    status_box = st.status("🔍 Searching Google Shopping & Ranking Offers...", expanded=True)
+    status_box = st.status("🔍 Step 1: Retrieving candidates via Google Shopping...", expanded=True)
     progress_bar = st.progress(5)
 
     candidates = []
@@ -235,7 +269,7 @@ if execute_search:
         status_box.write("⚡ Loading curated test scenario listings & cached thumbnails...")
         progress_bar.progress(30)
         raw_cands = active_case.get("candidates", [])
-        for c in raw_cands:
+        for idx, c in enumerate(raw_cands):
             c_img_ref = c.get("image_path") or c.get("thumbnail_url")
             c_img = fetch_candidate_image(c_img_ref)
             candidates.append(
@@ -247,6 +281,7 @@ if execute_search:
                     link=c.get("link", "#"),
                     thumbnail_url=c_img_ref,
                     image=c_img,
+                    retrieval_rank=idx + 1,
                 )
             )
         q_img_ref = active_case.get("image_path") or active_case.get("query_image_url")
@@ -306,13 +341,13 @@ if execute_search:
                 progress_callback=on_progress_update,
             )
 
-    status_box.write(f"📦 Step 3/4: Retrieved {len(candidates)} listings across online merchants.")
+    status_box.write(f"📦 Step 2/3: Retrieved {len(candidates)} raw candidates from Google Shopping.")
     progress_bar.progress(75)
 
-    status_box.write("🧠 Step 4/4: Running multimodal deep learning inference (EfficientNet-B0 + MiniLM)...")
+    status_box.write("🧠 Step 3/3: Running dual-model inference (Fine-Tuned Text-Only & Multimodal Fusion)...")
     progress_bar.progress(85)
 
-    # Match and rank candidates
+    # Match and rank candidates across both models
     matched, rejected = match_and_rank_candidates(
         query_title=query_title,
         query_image=query_image,
@@ -322,7 +357,10 @@ if execute_search:
         fusion_type=fusion_type,
         weights=mm_profile.get("weights"),
         bias=mm_profile.get("bias"),
+        text_threshold=text_th_slider,
     )
+
+    disagreements = categorize_model_disagreements(candidates)
 
     if only_show_priced:
         matched = [c for c in matched if c.price is not None]
@@ -330,86 +368,321 @@ if execute_search:
 
     progress_bar.progress(100)
     status_box.update(
-        label=f"✅ Matching complete! Found {len(matched)} verified offers ({len(rejected)} accessories/variants filtered).",
+        label=f"✅ Evaluation complete! Evaluated {len(candidates)} candidates: {len(matched)} likely matches, {len(rejected)} filtered out.",
         state="complete",
         expanded=False,
     )
 
-    st.subheader("2️⃣ Cross-Merchant Comparison Results")
+    # -----------------------------------------------------------------
+    # STAGE 1: RAW GOOGLE SHOPPING CANDIDATES (Part 2 Stage A)
+    # -----------------------------------------------------------------
+    st.markdown("## 📦 Stage 1: Google Shopping Candidate Retrieval")
+    st.markdown(
+        f"Google Shopping retrieved **{len(candidates)} raw candidate listings** using the title query. "
+        "These listings reflect initial search retrieval *before* our trained product matching model is applied."
+    )
+    st.info(
+        "💡 **Understanding Raw Retrieval:** Google Shopping uses search indexing to surface candidate listings across stores. "
+        "However, keyword queries frequently surface accessories (e.g. ear cushions, cases), related prior models (e.g. XM4 vs XM5), "
+        "or third-party parts. Google Shopping has **not** verified these candidates as exact product matches."
+    )
+
+    with st.expander(f"👁️ View All {len(candidates)} Raw Candidates (Original Retrieval Order)", expanded=False):
+        c_cols = st.columns(min(len(candidates), 4))
+        for i, c in enumerate(candidates):
+            with c_cols[i % 4]:
+                with st.container(border=True):
+                    st.caption(f"**Order #{c.retrieval_rank} Retrieved**")
+                    if c.thumbnail_url:
+                        st.image(c.thumbnail_url, width="stretch")
+                    st.markdown(f"**🛒 {c.merchant}**")
+                    st.write(c.title)
+                    if c.price is not None:
+                        st.markdown(f"**${float(c.price):.2f} {c.currency}**")
+                    else:
+                        st.caption("Price upon inquiry / unlisted")
+                    st.link_button("View Listing →", c.link)
+
+    st.divider()
+
+    # -----------------------------------------------------------------
+    # STAGE 2: MULTIMODAL MATCHING & MODEL COMPARISON (Part 2 Stage B & Part 3)
+    # -----------------------------------------------------------------
+    st.markdown("## 🧠 Stage 2: Multimodal Product Matching & Model Comparison")
+    st.markdown(
+        "Our trained model evaluates candidate listings by comparing the user's title and image against "
+        "each candidate. Below, you can explore the primary multimodal filtering results and examine how "
+        "the visual modality changes predictions compared to text-only matching."
+    )
+
+    # High-level pipeline summary metrics
+    text_matches_count = len([c for c in candidates if c.text_only_is_match])
+    m1, m2, m3, m4 = st.columns(4)
+    with m1:
+        st.metric("Raw Candidates Retrieved", len(candidates), help="Google Shopping initial retrieval set")
+    with m2:
+        st.metric("Text-Only Accepted", text_matches_count, help=f"Score ≥ τ_text ({text_th_slider:.2f})")
+    with m3:
+        st.metric("Multimodal Accepted", len(matched), help=f"Score ≥ τ_mm ({th_slider:.2f})")
+    with m4:
+        st.metric("Filtered Out by Multimodal", len(rejected), delta=f"-{len(rejected)}", delta_color="inverse")
+
+    # Tabbed Interface for Primary Results vs Academic Comparison
+    tab_mm, tab_comp, tab_table = st.tabs([
+        "🎯 Multimodal Matching Results (Primary Model)",
+        "⚖️ Academic Model Comparison (Text-Only vs Multimodal)",
+        "📋 Full Candidate Inspection Table"
+    ])
+
+    # TAB 1: Multimodal Matching Results
+    with tab_mm:
+        st.markdown(f"### 🟢 Likely Matching Listings ({len(matched)})")
+        st.caption(f"Listings predicted as equivalent product identity across merchants (Multimodal Score ≥ τ={th_slider:.2f}):")
+
+        if matched:
+            cols = st.columns(min(len(matched), 3))
+            for i, cand in enumerate(matched):
+                with cols[i % 3]:
+                    with st.container(border=True):
+                        st.caption(f"Order #{cand.retrieval_rank} • **{cand.merchant}**")
+                        if cand.thumbnail_url:
+                            st.image(cand.thumbnail_url, width="stretch")
+                        st.write(cand.title)
+                        try:
+                            price_display = f"${float(cand.price):.2f} {cand.currency}"
+                        except (ValueError, TypeError):
+                            price_display = f"{cand.price} {cand.currency}" if cand.price else "Price upon inquiry"
+
+                        st.markdown(f"### {price_display}")
+                        img_str = f"{cand.similarity_image:.2f}" if cand.similarity_image is not None else "N/A (Text Fallback)"
+                        st.caption(
+                            f"**Fused Score: `{cand.similarity_fused:.2f}`** (Text: `{cand.similarity_text:.2f}` | Img: `{img_str}`)"
+                        )
+                        st.link_button("View Listing →", cand.link)
+        else:
+            st.warning("No candidate listings cleared the multimodal decision threshold. Try lowering the threshold slider.")
+
+        st.markdown(f"### ⚪ Filtered Out Variants & Accessories ({len(rejected)})")
+        st.caption(f"Listings safely rejected by the ML model below decision threshold (Score < τ={th_slider:.2f}):")
+
+        if rejected:
+            r_cols = st.columns(min(len(rejected), 3))
+            display_limit = min(len(rejected), 12)
+            for i, rej in enumerate(rejected[:display_limit]):
+                with r_cols[i % 3]:
+                    with st.container(border=True):
+                        st.caption(f"Order #{rej.retrieval_rank} • **{rej.merchant}**")
+                        if rej.thumbnail_url:
+                            st.image(rej.thumbnail_url, width="stretch")
+                        st.write(rej.title)
+                        try:
+                            rej_price_str = f"Price: ${float(rej.price):.2f} {rej.currency}"
+                        except (ValueError, TypeError):
+                            rej_price_str = f"Price: {rej.price} {rej.currency}" if rej.price else ""
+                        if rej_price_str:
+                            st.caption(rej_price_str)
+
+                        st.error(f"✗ Filtered (Model Score: `{rej.similarity_fused:.3f}` < `{th_slider:.2f}`)")
+                        rej_img_str = f"{rej.similarity_image:.3f}" if rej.similarity_image is not None else "N/A (Text Fallback)"
+                        st.caption(f"Text Sim: `{rej.similarity_text:.3f}` | Img Sim: `{rej_img_str}`")
+                        st.link_button("Inspect Listing →", rej.link)
+            if len(rejected) > display_limit:
+                with st.expander(f"View remaining {len(rejected) - display_limit} rejected items"):
+                    for rej in rejected[display_limit:]:
+                        st.write(f"- **Order #{rej.retrieval_rank}** ({rej.merchant}): {rej.title} (Score: `{rej.similarity_fused:.3f}`)")
+
+    # TAB 2: Academic Model Comparison (Part 3)
+    with tab_comp:
+        st.markdown("### ⚖️ Fine-Tuned Text-Only vs. Multimodal Fusion Comparison")
+        st.markdown(
+            "This view processes the **exact same candidate set** through two distinct models to demonstrate "
+            "why adding visual features (`EfficientNet-B0`) resolves text ambiguities and accessory false positives:"
+        )
+
+        # Comparison summary metrics
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.metric("Consensus Matches", len(disagreements["consensus_matches"]), help="Both Text-Only and Multimodal accept")
+        with c2:
+            st.metric(
+                "Filtered by Visual Modality",
+                len(disagreements["text_only_matches"]),
+                help="Text-only accepted due to title overlap, but Multimodal safely rejected due to low visual similarity"
+            )
+        with c3:
+            st.metric("Rescued by Visual Modality", len(disagreements["multimodal_only_matches"]), help="Multimodal accepted, Text-only rejected")
+        with c4:
+            st.metric("Consensus Rejections", len(disagreements["consensus_rejections"]), help="Both models reject")
+
+        # Key Demonstration: Disagreements (Accessories / Variants)
+        disagree_items = disagreements["text_only_matches"]
+        if disagree_items:
+            st.markdown("#### ⚡ Crucial Differences: Candidates Filtered by Visual Evidence")
+            st.markdown(
+                "These candidates scored **high text similarity** (overlapping title keywords such as product model name), "
+                "leading the **Text-Only model to accept them**. However, because the visual image clearly depicts an "
+                "accessory or replacement part rather than the product, **our Multimodal model correctly filtered them out**:"
+            )
+            d_cols = st.columns(min(len(disagree_items), 3))
+            for i, d in enumerate(disagree_items):
+                with d_cols[i % 3]:
+                    with st.container(border=True):
+                        st.caption(f"Order #{d.retrieval_rank} • **{d.merchant}**")
+                        if d.thumbnail_url:
+                            st.image(d.thumbnail_url, width="stretch")
+                        st.write(d.title)
+                        st.warning(f"📝 Text-Only: Accepted (Sim: `{d.text_only_sim:.3f}` ≥ `{text_th_slider:.2f}`)")
+                        d_img_val = f"{d.similarity_image:.3f}" if d.similarity_image is not None else "N/A"
+                        st.error(f"🖼️ Multimodal: Filtered Out (Img: `{d_img_val}`, Fused: `{d.similarity_fused:.3f}` < `{th_slider:.2f}`)")
+                        st.caption("💡 *Visual difference prevented an accessory false positive.*")
+        else:
+            st.info("No candidates were accepted by text-only and filtered by multimodal at the selected thresholds.")
+
+        if disagreements["multimodal_only_matches"]:
+            st.markdown("#### 🔍 Candidates Rescued by Visual Modality")
+            st.markdown("These candidates had lower text similarity but high visual similarity, causing the multimodal model to accept them:")
+            for m in disagreements["multimodal_only_matches"]:
+                st.write(f"- **Order #{m.retrieval_rank}** ({m.merchant}): {m.title} (Text Sim: `{m.text_only_sim:.3f}`, Img Sim: `{m.similarity_image:.3f}`, Fused: `{m.similarity_fused:.3f}`)")
+
+        with st.expander("👁️ View Consensus Matches (Both Models Agree)", expanded=False):
+            for c in disagreements["consensus_matches"]:
+                st.write(f"- **Order #{c.retrieval_rank}** ({c.merchant}): {c.title} — Text: `{c.text_only_sim:.3f}`, Img: `{c.similarity_image:.3f}`, Fused: `{c.similarity_fused:.3f}`")
+
+        with st.expander("👁️ View Consensus Rejections (Both Models Reject)", expanded=False):
+            for c in disagreements["consensus_rejections"]:
+                st.write(f"- **Order #{c.retrieval_rank}** ({c.merchant}): {c.title} — Text: `{c.text_only_sim:.3f}`, Img: `{c.similarity_image:.3f}`, Fused: `{c.similarity_fused:.3f}`")
+
+        st.caption(
+            "📌 *Academic Note: In live search without external ground-truth labels, model disagreements are presented "
+            "as differences between model hypotheses rather than confirmed error corrections.*"
+        )
+
+    # TAB 3: Full Table Inspection
+    with tab_table:
+        st.markdown("### 📋 Complete Candidate Feature & Decision Matrix")
+        table_rows = []
+        for c in candidates:
+            disagreement_status = "Consensus Match" if (c.text_only_is_match and c.multimodal_is_match) else (
+                "Filtered by Vision" if (c.text_only_is_match and not c.multimodal_is_match) else (
+                    "Rescued by Vision" if (not c.text_only_is_match and c.multimodal_is_match) else "Consensus Reject"
+                )
+            )
+            table_rows.append({
+                "Rank": c.retrieval_rank,
+                "Merchant": c.merchant,
+                "Title": c.title,
+                "Price": f"${c.price:.2f} {c.currency}" if c.price is not None else "Unlisted",
+                "Text Sim": round(c.text_only_sim, 3),
+                "Img Sim": round(c.similarity_image, 3) if c.similarity_image is not None else "N/A",
+                "Fused Score": round(c.similarity_fused, 3),
+                "Text Decision": "✓ Match" if c.text_only_is_match else "✗ Filtered",
+                "Multimodal Decision": "✓ Match" if c.multimodal_is_match else "✗ Filtered",
+                "Agreement": disagreement_status,
+            })
+        st.dataframe(pd.DataFrame(table_rows), use_container_width=True)
+
+    st.divider()
+
+    # -----------------------------------------------------------------
+    # STAGE 3: CROSS-MERCHANT PRICE COMPARISON (Part 2 Stage C)
+    # -----------------------------------------------------------------
+    st.markdown("## 💰 Stage 3: Cross-Merchant Price Comparison (Among Likely Matches)")
+    st.markdown(
+        "Price comparison applies **strictly to candidates retrieved and accepted** by the trained model. "
+        "Offers are grouped by currency to prevent inaccurate cross-currency numeric comparisons."
+    )
 
     if "Curated Demo" in search_mode:
         st.info("📌 **Curated Evaluation Notice:** Prices and merchant listings are illustrative offline samples for model verification, not real-time live quotes.")
 
     if matched:
-        # Pick lowest price offer among matched products
-        offers_with_price = [c for c in matched if c.price is not None]
-        best_offer = offers_with_price[0] if offers_with_price else matched[0]
-        try:
-            best_price_str = f"${float(best_offer.price):.2f} {best_offer.currency}"
-        except (ValueError, TypeError):
-            best_price_str = f"{best_offer.price} {best_offer.currency}" if best_offer.price else "Price upon inquiry"
+        currency_groups = group_candidates_by_currency(matched)
 
-        st.success(
-            f"🏆 **Best Price Found:** **{best_price_str}** at **{best_offer.merchant}** "
-            f"(Match Score: `{best_offer.similarity_fused:.2f}`)"
-        )
+        if len(currency_groups) > 1:
+            st.warning(
+                f"⚠️ Note: Retrieved listings span multiple currencies ({', '.join(currency_groups.keys())}). "
+                "Offers are presented separately per currency without currency conversion."
+            )
+
+        for curr, group_info in currency_groups.items():
+            st.markdown(f"### 💵 Offers in {curr}")
+            lowest_offer = group_info["lowest_offer"]
+            priced_offers = group_info["priced_offers"]
+            unpriced_offers = group_info["unpriced_offers"]
+
+            if lowest_offer is not None:
+                st.success(
+                    f"🏆 **Lowest Price Among Retrieved Matches ({curr}):** "
+                    f"**${lowest_offer.price:.2f} {curr}** at **{lowest_offer.merchant}** "
+                    f"(Multimodal Match Score: `{lowest_offer.similarity_fused:.2f}`)"
+                )
+
+            if priced_offers:
+                p_cols = st.columns(min(len(priced_offers), 3))
+                for i, po in enumerate(priced_offers):
+                    with p_cols[i % 3]:
+                        with st.container(border=True):
+                            st.caption(f"Order #{po.retrieval_rank} • **{po.merchant}**")
+                            if po.thumbnail_url:
+                                st.image(po.thumbnail_url, width="stretch")
+                            st.write(po.title)
+                            st.markdown(f"### ${float(po.price):.2f} {po.currency}")
+                            st.caption(f"Match Score: `{po.similarity_fused:.2f}`")
+                            st.link_button("View Offer →", po.link)
+
+            if unpriced_offers:
+                with st.expander(f"Unpriced / Incomplete Listings in {curr} ({len(unpriced_offers)})"):
+                    for up in unpriced_offers:
+                        st.write(f"- **Order #{up.retrieval_rank}** ({up.merchant}): {up.title} — *Price upon inquiry / unlisted*")
+
     else:
-        st.warning("No listings matched above the current threshold. Try lowering the threshold slider.")
+        st.warning("No candidate listings cleared the matching threshold to compare prices.")
 
-    # Section 1: Exact Product Matches
-    st.markdown(f"### 🟢 Verified Exact Product Matches ({len(matched)})")
-    st.caption("Listings confirmed as the exact target product across merchants, ordered by price:")
+st.divider()
 
-    if matched:
-        cols = st.columns(min(len(matched), 3))
-        for i, cand in enumerate(matched):
-            with cols[i % 3]:
-                with st.container(border=True):
-                    if cand.thumbnail_url:
-                        st.image(cand.thumbnail_url, width="stretch")
-                    st.markdown(f"**🛒 {cand.merchant}**")
-                    st.write(cand.title)
-                    try:
-                        price_display = f"${float(cand.price):.2f} {cand.currency}"
-                    except (ValueError, TypeError):
-                        price_display = f"{cand.price} {cand.currency}" if cand.price else "Price upon inquiry"
+# -----------------------------------------------------------------
+# ACADEMIC PRESENTATION WALKTHROUGH GUIDE (Part 4)
+# -----------------------------------------------------------------
+with st.expander("🎓 Academic Evaluation & Presentation Walkthrough (NUS MTech Practice Module)", expanded=False):
+    st.markdown(
+        """
+        ### 6 Core Presentation Questions Answered:
 
-                    st.markdown(f"### {price_display}")
-                    reason_badge = f" • *{cand.match_reason}*" if cand.match_reason else ""
-                    img_str = f"{cand.similarity_image:.2f}" if cand.similarity_image is not None else "N/A (Text Fallback)"
-                    st.caption(
-                        f"Score: `{cand.similarity_fused:.2f}` (Text: `{cand.similarity_text:.2f}` | Img: `{img_str}`){reason_badge}"
-                    )
-                    st.link_button("View Listing →", cand.link)
-    else:
-        st.info("No candidates cleared the match threshold.")
+        1. **What problem are we solving?**
+           E-commerce product listings for the exact same underlying product vary widely across merchants in title phrasing,
+           languages, and seller photography, while keyword queries frequently return accessory items (cases, ear pads) that
+           pollute cross-merchant price comparisons.
 
-    # Section 2: Rejected Variants / Non-Matches
-    st.markdown(f"### ⚪ Filtered Out Variants & Non-Matches ({len(rejected)})")
-    st.caption("Unrelated variants and low-similarity listings safely rejected by the ML model below the decision threshold:")
+        2. **What does Google Shopping already provide?**
+           Candidate retrieval via keyword search. It scans merchant feeds and returns potential listings with prices,
+           but does **not** perform identity verification — often returning accessories or different variants.
 
-    if rejected:
-        r_cols = st.columns(min(len(rejected), 3))
-        display_limit = min(len(rejected), 12)
-        for i, rej in enumerate(rejected[:display_limit]):
-            with r_cols[i % 3]:
-                with st.container(border=True):
-                    if rej.thumbnail_url:
-                        st.image(rej.thumbnail_url, width="stretch")
-                    st.markdown(f"**Merchant:** {rej.merchant}")
-                    st.write(rej.title)
-                    try:
-                        rej_price_str = f"Price: ${float(rej.price):.2f} {rej.currency}"
-                    except (ValueError, TypeError):
-                        rej_price_str = f"Price: {rej.price} {rej.currency}" if rej.price else ""
+        3. **What does our trained model add?**
+           Product identity matching and filtering. It evaluates multimodal similarity between the user's query product
+           and retrieved listings to filter out false positives and non-identical products.
 
-                    if rej_price_str:
-                        st.caption(rej_price_str)
-                    st.error(f"✗ Filtered (Model Score: `{rej.similarity_fused:.3f}` < `{th_slider:.2f}`)")
-                    rej_img_str = f"{rej.similarity_image:.3f}" if rej.similarity_image is not None else "N/A (Text Fallback)"
-                    st.caption(f"Text Sim: `{rej.similarity_text:.3f}` | Img Sim: `{rej_img_str}` • *{rej.match_reason}*")
-        if len(rejected) > display_limit:
-            with st.expander(f"View remaining {len(rejected) - display_limit} rejected items"):
-                for rej in rejected[display_limit:]:
-                    st.write(f"- **{rej.merchant}**: {rej.title} (Score: `{rej.similarity_fused:.3f}`)")
+        4. **Why do we use both text and images?**
+           Text alone is vulnerable to keyword-stuffing (e.g. an ear pad listing that contains "Sony WH-1000XM5" in its title).
+           Visual features capture product morphology, separating headphones from cases. Combining both modalities produces
+           high precision while preserving recall.
 
+        5. **How do the text-only and multimodal models differ?**
+           - **Model A (Text-Only)**: Uses fine-tuned SentenceTransformers to measure title semantics ($\tau_{text} \approx 0.60$).
+           - **Model B (Multimodal)**: Combines text embeddings with EfficientNet-B0 visual embeddings via calibrated fusion ($\tau_{mm} \approx 0.75$).
+           - The model comparison tab directly visualizes candidates where visual evidence corrects text ambiguities.
+
+        6. **How were the models objectively evaluated?**
+           Evaluated on the Kaggle Shopee Product Matching dataset (34,250 listings partitioned with zero data leakage by `label_group`)
+           across 6 progressive experimental stages (Exp 0 to Exp 5), achieving a benchmark Mean F1 of **0.8629** on unseen test groups.
+           
+        ---
+        
+        #### 📌 Distinction Between Academic Matcher & Consumer Assistant:
+        | Dimension | Academic Dataset Matcher (Page 1) | Consumer Shopping Assistant (Page 3) |
+        | :--- | :--- | :--- |
+        | **Dataset** | Kaggle Shopee held-out test split | Real-world Google Shopping listings / Curated web cases |
+        | **Ground Truth** | `label_group` annotations available | No external ground truth on open web |
+        | **Evaluation** | Quantitative Precision, Recall, and F1 | Qualitative demonstration of filtering and price discovery |
+        | **Performance Claim** | Benchmark F1 = 0.863 on Shopee test set | Model predictions; not claimed as 86.3% precision on open web |
+        """
+    )

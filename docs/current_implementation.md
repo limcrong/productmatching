@@ -33,8 +33,8 @@ We implemented the complete Python-based **Multimodal Product Matching System** 
      - Side-by-side model comparison mode.
    - **Experiment Dashboard (`pages/2_Experiment_Results.py`)**:
      - Benchmark table, Plotly F1 progression chart, Precision/Recall breakdown, and qualitative error analysis (phone vs. case, color variants, multilingual titles, cross-generation confusion).
-   - **Live Web Matcher Stub (`pages/3_Live_Matcher.py`)**:
-     - Consumer-facing cross-merchant comparison concept stub.
+   - **Image-Assisted Shopping Matcher POC (pages/3_Live_Matcher.py)**:
+     - 3-stage guided workflow (Stage 1 Google Shopping Retrieval -> Stage 2 Multimodal Matching & Model Comparison -> Stage 3 Price Comparison).
 
 5. **Kaggle GPU Execution (`notebooks/`)**:
    - Created `notebooks/kaggle_pipeline.py` and `notebooks/README.md` for running full deep learning embedding extraction on Kaggle GPUs and saving `test_text_embeddings.npy`, `test_image_embeddings.npy`, and `results.json` for download.

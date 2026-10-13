@@ -34,12 +34,20 @@ class WebCandidate:
     link: str
     thumbnail_url: Optional[str]
     image: Optional[Image.Image] = None
+    retrieval_rank: int = 1
     similarity_text: float = 0.0
     similarity_image: Optional[float] = None
     similarity_fused: float = 0.0
     is_match: bool = False
     match_reason: str = ""
     modality: str = "multimodal"
+    # Dual-model evaluation tracking for academic explainability (Text-Only vs Multimodal)
+    text_only_sim: float = 0.0
+    text_only_is_match: bool = False
+    text_only_reason: str = ""
+    multimodal_sim: float = 0.0
+    multimodal_is_match: bool = False
+    multimodal_reason: str = ""
 
 
 def get_serpapi_key() -> Optional[str]:
@@ -213,7 +221,7 @@ def search_google_shopping(
     candidates = []
     urls_to_fetch = []
 
-    for item in shopping_results[:max_results]:
+    for idx, item in enumerate(shopping_results[:max_results]):
         title = item.get("title", "")
         merchant = item.get("source") or item.get("merchant") or item.get("seller") or "Online Merchant"
         price, currency = extract_price_and_currency(item, country=country)
@@ -229,6 +237,7 @@ def search_google_shopping(
             currency=currency,
             link=link,
             thumbnail_url=thumb_url,
+            retrieval_rank=idx + 1,
         )
         candidates.append(cand)
         urls_to_fetch.append(thumb_url)
@@ -303,7 +312,7 @@ def search_google_lens(
     candidates = []
     urls_to_fetch = []
 
-    for item in visual_matches[:max_results]:
+    for idx, item in enumerate(visual_matches[:max_results]):
         title = item.get("title", "")
         merchant = item.get("source") or item.get("merchant") or "Online Merchant"
         price, currency = extract_price_and_currency(item, country=country)
@@ -319,6 +328,7 @@ def search_google_lens(
             currency=currency,
             link=link,
             thumbnail_url=thumb_url,
+            retrieval_rank=idx + 1,
         )
         candidates.append(cand)
         urls_to_fetch.append(thumb_url)

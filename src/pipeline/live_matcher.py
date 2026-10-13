@@ -3,16 +3,38 @@ Inference Pipeline for Visual Shopping Assistant (Live Candidate Re-Ranking & Ma
 Applies the calibrated multimodal matching models to rank and filter real web candidates.
 """
 
-from typing import List, Optional, Dict, Tuple
+from typing import List, Optional, Dict, Tuple, Any
 import numpy as np
 from PIL import Image
 
-import torch
-from sentence_transformers import SentenceTransformer
+try:
+    import torch
+    from sentence_transformers import SentenceTransformer
+    from src.models.image_encoder import ImageEncoder
+    HAS_TORCH = True
+    _TORCH_ERR = None
+except Exception as _e:
+    HAS_TORCH = False
+    _TORCH_ERR = str(_e)
+
 from src.config import DEFAULT_TEXT_MODEL, DEFAULT_IMAGE_MODEL, ROOT_DIR
 from src.retrieval.web_search import WebCandidate
-from src.models.image_encoder import ImageEncoder
-from src.models.multimodal import score_fusion, learned_fusion
+
+
+def score_fusion(text_similarities: np.ndarray, image_similarities: np.ndarray, alpha: float = 0.5) -> np.ndarray:
+    return alpha * text_similarities + (1.0 - alpha) * image_similarities
+
+
+def learned_fusion(
+    text_similarities: np.ndarray,
+    image_similarities: np.ndarray,
+    w_text: float,
+    w_image: float,
+    bias: float,
+) -> np.ndarray:
+    logits = w_text * text_similarities + w_image * image_similarities + bias
+    return 1.0 / (1.0 + np.exp(-logits))
+
 
 _CACHED_TEXT_MODEL = None
 _CACHED_VISION_MODEL = None
@@ -20,6 +42,11 @@ _CACHED_VISION_MODEL = None
 
 def get_live_text_encoder(model_name_or_path: str = DEFAULT_TEXT_MODEL):
     """Loads SentenceTransformer on CPU for live inference, prioritizing local fine-tuned weights."""
+    if not HAS_TORCH:
+        raise RuntimeError(
+            f"PyTorch failed to load in current Python environment: {_TORCH_ERR}.\n"
+            "Please launch Streamlit from the project virtual environment: `.\\.venv\\Scripts\\streamlit run app/app.py`"
+        )
     global _CACHED_TEXT_MODEL
     if _CACHED_TEXT_MODEL is None:
         ft_path = ROOT_DIR / "models" / "text_ft"
@@ -34,12 +61,18 @@ def get_live_text_encoder(model_name_or_path: str = DEFAULT_TEXT_MODEL):
     return _CACHED_TEXT_MODEL
 
 
-def get_live_image_encoder(model_name: str = DEFAULT_IMAGE_MODEL) -> ImageEncoder:
+def get_live_image_encoder(model_name: str = DEFAULT_IMAGE_MODEL):
     """Loads and caches ImageEncoder (EfficientNet-B0) on CPU for live inference."""
+    if not HAS_TORCH:
+        raise RuntimeError(
+            f"PyTorch failed to load in current Python environment: {_TORCH_ERR}.\n"
+            "Please launch Streamlit from the project virtual environment: `.\\.venv\\Scripts\\streamlit run app/app.py`"
+        )
     global _CACHED_VISION_MODEL
     if _CACHED_VISION_MODEL is None:
         _CACHED_VISION_MODEL = ImageEncoder(model_name=model_name, pretrained=True, device="cpu")
     return _CACHED_VISION_MODEL
+
 
 
 def compute_text_similarity(query_text: str, candidate_titles: List[str]) -> np.ndarray:
@@ -123,11 +156,12 @@ def match_and_rank_candidates(
     fusion_type: str = "learned",
     weights: Optional[Dict[str, float]] = None,
     bias: Optional[float] = None,
+    text_threshold: float = 0.60,
 ) -> Tuple[List[WebCandidate], List[WebCandidate]]:
     """
-    Computes text and image similarities using the calibrated offline models,
-    applies the validation-selected fusion strategy and threshold τ, and partitions
-    candidates into verified exact products vs. rejected items.
+    Computes text and image similarities using calibrated models,
+    evaluates both Fine-Tuned Text-Only and Multimodal Fusion predictions on the
+    EXACT SAME candidate set, and partitions candidates into likely matching listings vs. filtered items.
     """
     if not candidates:
         return [], []
@@ -157,6 +191,13 @@ def match_and_rank_candidates(
     for i, cand in enumerate(candidates):
         cand.similarity_text = float(text_sims[i])
 
+        # 1. Model A — Fine-Tuned Text-Only evaluation
+        cand.text_only_sim = float(text_sims[i])
+        cand.text_only_is_match = bool(cand.text_only_sim >= text_threshold)
+        t_label = "Match" if cand.text_only_is_match else "Filtered"
+        cand.text_only_reason = f"Text-Only {t_label} ({cand.text_only_sim:.3f} {'≥' if cand.text_only_is_match else '<'} τ={text_threshold:.2f})"
+
+        # 2. Model B — Multimodal Fusion evaluation
         if valid_img_mask[i]:
             # Both text and visual representations are genuinely available
             cand.similarity_image = float(img_sims[i])
@@ -193,6 +234,10 @@ def match_and_rank_candidates(
         cand.is_match = is_match
         cand.match_reason = reason
 
+        cand.multimodal_sim = final_score
+        cand.multimodal_is_match = is_match
+        cand.multimodal_reason = reason
+
         if cand.is_match:
             matched.append(cand)
         else:
@@ -204,4 +249,62 @@ def match_and_rank_candidates(
     rejected.sort(key=lambda x: x.similarity_fused, reverse=True)
 
     return matched, rejected
+
+
+def categorize_model_disagreements(
+    candidates: List[WebCandidate],
+) -> Dict[str, List[WebCandidate]]:
+    """
+    Categorizes the exact candidate set across Text-Only and Multimodal predictions.
+    Identifies agreements (consensus) and disagreements (visual filtering vs visual rescues).
+    """
+    consensus_matches = []
+    text_only_matches = []  # Disagreement: text accepted, multimodal rejected (filtered out accessories/variants)
+    multimodal_only_matches = []  # Disagreement: multimodal accepted, text rejected (rescued by visual similarity)
+    consensus_rejections = []
+
+    for c in candidates:
+        if c.text_only_is_match and c.multimodal_is_match:
+            consensus_matches.append(c)
+        elif c.text_only_is_match and not c.multimodal_is_match:
+            text_only_matches.append(c)
+        elif not c.text_only_is_match and c.multimodal_is_match:
+            multimodal_only_matches.append(c)
+        else:
+            consensus_rejections.append(c)
+
+    return {
+        "consensus_matches": consensus_matches,
+        "text_only_matches": text_only_matches,
+        "multimodal_only_matches": multimodal_only_matches,
+        "consensus_rejections": consensus_rejections,
+    }
+
+
+def group_candidates_by_currency(
+    candidates: List[WebCandidate],
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Partitions candidates by currency to prevent comparing numeric prices across different
+    currencies without currency conversion.
+    Returns: {currency: {"priced_offers": [...], "unpriced_offers": [...], "lowest_offer": ...}}
+    """
+    by_currency: Dict[str, List[WebCandidate]] = {}
+    for c in candidates:
+        curr = (c.currency or "UNKNOWN").upper().strip()
+        by_currency.setdefault(curr, []).append(c)
+
+    results: Dict[str, Dict[str, Any]] = {}
+    for curr, items in by_currency.items():
+        priced = [c for c in items if c.price is not None]
+        unpriced = [c for c in items if c.price is None]
+        priced.sort(key=lambda x: x.price if x.price is not None else 999999)
+        lowest = priced[0] if priced else None
+        results[curr] = {
+            "priced_offers": priced,
+            "unpriced_offers": unpriced,
+            "lowest_offer": lowest,
+        }
+    return results
+
 
