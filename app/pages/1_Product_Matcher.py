@@ -25,11 +25,16 @@ from src.retrieval.matching import categorize_and_filter_candidates
 from src.models.text_encoder import TfidfEncoder
 from src.models.multimodal import score_fusion, learned_fusion
 
+import importlib
 try:
-    from app.components.sidebar_controls import render_sidebar_controls
+    import app.components.sidebar_controls as sc
+    importlib.reload(sc)
+    render_sidebar_controls = sc.render_sidebar_controls
     from app.components.product_card import render_product_card
 except (ModuleNotFoundError, ImportError):
-    from components.sidebar_controls import render_sidebar_controls
+    import components.sidebar_controls as sc
+    importlib.reload(sc)
+    render_sidebar_controls = sc.render_sidebar_controls
     from components.product_card import render_product_card
 
 st.set_page_config(page_title="Product Matcher | Demo", page_icon="🔍", layout="wide")
@@ -153,7 +158,7 @@ with ref_col2:
     )
     st.info(
         "💡 **Academic Insight:** Ground-truth matches share the exact same `label_group`."
-        " Drag the threshold slider in the sidebar to observe the precision/recall trade-off live!"
+        " Candidate predictions are evaluated using the validation-calibrated threshold (τ) for each model."
     )
 
 st.divider()

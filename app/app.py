@@ -109,7 +109,7 @@ with n1:
         st.markdown("### 🔍 1. Product Matcher")
         st.write(
             "Interactive demonstration against held-out **unseen product groups**."
-            " Test different models and observe the precision/recall trade-off live with the threshold slider."
+            " Test different models and evaluate precision/recall with validation-calibrated thresholds."
         )
         st.page_link("pages/1_Product_Matcher.py", label="Open Product Matcher →", icon="🔍")
 

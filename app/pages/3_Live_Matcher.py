@@ -76,21 +76,38 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* Consistent listing image container and card presentation */
-    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stImage"] {
-        height: 170px !important;
+    /* Consistent listing image container and card presentation across columns */
+    div[data-testid="stColumn"] div[data-testid="stVerticalBlock"] div[data-testid="stImage"] {
+        height: 180px !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
-        background-color: #f8fafc;
-        border-radius: 8px;
-        overflow: hidden;
-        margin-bottom: 6px;
+        background-color: #ffffff !important;
+        border-radius: 8px !important;
+        overflow: hidden !important;
+        margin: 0 auto 8px auto !important;
     }
-    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stImage"] img {
-        max-height: 160px !important;
+    div[data-testid="stColumn"] div[data-testid="stVerticalBlock"] div[data-testid="stImage"] > div {
+        height: 100% !important;
+        width: 100% !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+    div[data-testid="stColumn"] div[data-testid="stVerticalBlock"] div[data-testid="stImage"] img {
+        max-height: 170px !important;
         max-width: 100% !important;
+        width: auto !important;
+        height: auto !important;
         object-fit: contain !important;
+    }
+
+    /* Dedicated Query Preview card image styling */
+    div[data-testid="stColumn"]:first-child div[data-testid="stVerticalBlock"] div[data-testid="stImage"] {
+        height: 200px !important;
+    }
+    div[data-testid="stColumn"]:first-child div[data-testid="stVerticalBlock"] div[data-testid="stImage"] img {
+        max-height: 190px !important;
     }
     </style>
     """,
@@ -128,12 +145,11 @@ st.caption(
 with st.container(border=True):
     st.markdown(
         """
-        **System Architecture & Value Distinction:**
+        **Process flow:**
         1. **Stage 1 — Candidate Retrieval (Google Shopping / SerpAPI)**: Google Shopping retrieves real-world merchant listings using the product title hint. *(Note: Google Shopping supplies potential listings based on keywords, which frequently include accessories, replacement parts, and mismatched variants. It does not classify candidates as exact matches.)*
         2. **Stage 2 — Identity Matching & Filtering (Trained Multimodal Model)**: Our trained model evaluates the user's title and image against candidate listings to filter accessories and incorrect variants.
         3. **Stage 3 — Cross-Merchant Price Comparison**: Compares available prices strictly among retrieved and accepted product matches in a clean comparison table to highlight the lowest available offer.
         
-        *Disclaimer: Live shopping results represent model-based predictions rather than certified identical matches. Price discovery applies only to retrieved and accepted listings.*
         """
     )
 
@@ -145,7 +161,7 @@ st.sidebar.header("⚙️ Assistant Settings")
 
 search_mode = st.sidebar.radio(
     "Search Mode",
-    options=["⚡ Curated Demo Scenarios (Zero Cost)", "🔍 Live Web Search (SerpAPI)"],
+    options=["⚡ Curated Demo Scenarios", "🔍 Live Web Search (SerpAPI)"],
     index=0,
     help="Select Curated Demos for instant, quota-free offline evaluation or Live Web Search for real web crawling.",
 )
@@ -163,14 +179,15 @@ if "Live Web Search" in search_mode:
     else:
         st.sidebar.success("✓ SerpAPI Key Loaded")
 
-country = st.sidebar.selectbox("Marketplace Country:", ["sg", "us", "id", "my"], index=0)
+# country = st.sidebar.selectbox("Marketplace Country:", ["sg", "us", "id", "my"], index=0)
+country = "sg"
 
 # Learned logistic fusion as default (Fix 3)
 fusion_model_choice = st.sidebar.selectbox(
     "Matching & Fusion Strategy",
     options=[
-        "🤖 Learned Logistic Fusion (Exp 4b - Supervised Fixed Sigmoid)",
-        "🎯 Linear Score Fusion (Exp 4a - Adjustable Weights, 90.7% Precision)",
+        "🤖 Exp 4b Learned Logistic Fusion",
+        # "🎯 Linear Score Fusion (Exp 4a - Adjustable Weights, 90.7% Precision)",
     ],
     index=0,
     help="Learned Logistic Fusion (Exp 4b) is the validation-selected model combining text and EfficientNet-B0 embeddings via supervised logistic regression weights calibrated on Kaggle training splits.",
@@ -181,46 +198,23 @@ fusion_type = "learned" if is_learned else "grid"
 default_th = 0.75 if is_learned else 0.55
 default_alpha = float(mm_profile.get("default_alpha", 0.55)) if is_learned else 0.60
 
-th_slider = st.sidebar.slider(
-    "Multimodal Threshold (τ_mm):",
-    min_value=0.0,
-    max_value=1.0,
-    value=float(default_th),
-    step=0.01,
-    help=f"Calibrated validation threshold is {default_th:.2f} (from academic evaluation).",
-)
-st.sidebar.caption(f"🎯 Multimodal Decision τ: **{th_slider:.2f}**")
+# Fixed academic evaluation thresholds (Sliders removed to avoid demo confusion)
+th_slider = float(default_th)
+text_th_slider = 0.60
+alpha_slider = default_alpha
 
-text_th_slider = st.sidebar.slider(
-    "Text-Only Threshold (τ_text):",
-    min_value=0.0,
-    max_value=1.0,
-    value=0.60,
-    step=0.01,
-    help="Calibrated threshold for fine-tuned SentenceTransformer (Exp 2 domain adaptation). Used for model comparison.",
-)
-st.sidebar.caption(f"📝 Text-Only Baseline τ: **{text_th_slider:.2f}**")
+st.sidebar.markdown(f"**🎯 Multimodal Decision τ:** `{th_slider:.2f}`")
+st.sidebar.caption("Validation-calibrated decision threshold from academic evaluation.")
+
+st.sidebar.markdown(f"**📝 Text-Only Baseline τ:** `{text_th_slider:.2f}`")
+st.sidebar.caption("Calibrated baseline threshold for fine-tuned SentenceTransformer (Exp 2).")
 
 if not is_learned:
-    alpha_slider = st.sidebar.slider(
-        "Text Weight (α):",
-        min_value=0.0,
-        max_value=1.0,
-        value=float(default_alpha),
-        step=0.05,
-        help="Higher α increases focus on exact text specifications. Validation optimum is α=0.60.",
-    )
-    st.sidebar.caption(f"Text Weight (α): **{alpha_slider:.2f}** | Image Weight: **{1.0 - alpha_slider:.2f}**")
+    st.sidebar.markdown(f"**⚖️ Text Weight (α):** `{alpha_slider:.2f}` | **Image Weight:** `{1.0 - alpha_slider:.2f}`")
+    st.sidebar.caption("Fixed validation optimum weighting (α=0.60).")
 else:
-    alpha_slider = default_alpha
-    st.sidebar.info("🤖 **Learned Logistic Weights (Exp 4b):** w_text = 9.463, w_image = 7.809, bias = -8.198")
+    st.sidebar.info("🤖 **Learned Logistic Weights (Exp 4b):**\nw_text = 9.463, w_image = 7.809, bias = -8.198")
     st.sidebar.caption("Supervised logistic fusion evaluated on Kaggle held-out split (Test F1 = 0.8629).")
-
-only_show_priced = st.sidebar.checkbox(
-    "Only Show Listings With Prices",
-    value=False,
-    help="Hides catalog cards or entries without an available merchant price.",
-)
 
 # Main Interface: Input Selection
 st.subheader("1️⃣ Product Input (Image & Title Hint)")
@@ -244,10 +238,13 @@ if "Curated Demo" in search_mode:
 
     col_in1, col_in2 = st.columns([1, 2])
     with col_in1:
-        if curated_preview_img is not None:
-            st.image(curated_preview_img, caption="Query Product Image (Curated Example)", width="stretch")
-        elif default_img_ref:
-            st.image(default_img_ref, caption="Query Product Image (Curated Example)", width="stretch")
+        with st.container(border=True):
+            st.caption("📌 **Query Product Photo Reference**")
+            img_to_show = curated_preview_img if curated_preview_img is not None else default_img_ref
+            if img_to_show is not None:
+                st.image(img_to_show, use_container_width=True)
+            else:
+                st.info("🖼️ No image available")
     with col_in2:
         query_title = st.text_input("Product Title / Model Hint:", value=default_title)
         st.caption("💡 Curated scenarios include exact models from multiple merchants alongside accessories (cases, ear pads).")
@@ -269,7 +266,9 @@ else:
     with col_engine:
         search_engine_choice = st.selectbox(
             "Retrieval Engine:",
-            options=["Google Shopping Tab (Prices)", "Google Lens (Visual Matches)"],
+            options=["Google Shopping Tab (Prices)"
+            # , "Google Lens (Visual Matches)"
+             ],
             index=0,
             help="Google Shopping tab returns store listings with prices. Google Lens performs open web reverse-image matching.",
         )
@@ -400,10 +399,6 @@ if execute_search:
 
     disagreements = categorize_model_disagreements(candidates)
 
-    if only_show_priced:
-        matched = [c for c in matched if c.price is not None]
-        rejected = [c for c in rejected if c.price is not None]
-
     progress_bar.progress(100)
     status_box.update(
         label=f"✅ Evaluation complete! Evaluated {len(candidates)} candidates: {len(matched)} likely matches, {len(rejected)} filtered out.",
@@ -506,7 +501,7 @@ if execute_search:
                             )
                             st.link_button("View Listing →", cand.link, use_container_width=True)
         else:
-            st.warning("No candidate listings cleared the multimodal decision threshold. Try lowering the threshold slider.")
+            st.warning("No candidate listings cleared the calibrated multimodal decision threshold.")
 
         st.markdown(f"### ⚪ Filtered Out Variants & Accessories ({len(rejected)})")
         st.caption(f"Listings safely rejected by the ML model below decision threshold (Score < τ={th_slider:.2f}):")
