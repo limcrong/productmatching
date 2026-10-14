@@ -33,17 +33,11 @@ def render_sidebar_controls() -> Dict[str, Any]:
         )
 
     calibrated_th = profile.get("default_threshold", 0.65)
-    threshold = st.sidebar.slider(
-        "Similarity Threshold (τ)",
-        min_value=0.0,
-        max_value=1.0,
-        value=float(calibrated_th),
-        step=0.01,
-        help=f"Scores ≥ τ are predicted as matches. (Tuned validation τ = {calibrated_th:.2f})",
-    )
-    st.sidebar.caption(f"🎯 Validation-Calibrated τ: **{calibrated_th:.2f}**")
+    threshold = float(calibrated_th)
+    st.sidebar.markdown(f"**🎯 Similarity Threshold (τ):** `{threshold:.2f}`")
+    st.sidebar.caption(f"Validation-calibrated decision threshold (Tuned τ = {threshold:.2f}).")
 
-    alpha = profile.get("default_alpha", 0.60)
+    alpha = float(profile.get("default_alpha", 0.60))
     fusion_type = profile.get("fusion_type", "grid")
 
     if "Multimodal" in model_choice:
@@ -52,24 +46,12 @@ def render_sidebar_controls() -> Dict[str, Any]:
             effective_alpha = profile.get("default_alpha", 0.60)
             st.sidebar.caption(f"Effective Text Weight: **{effective_alpha:.2f}** | Image Weight: **{1.0 - effective_alpha:.2f}**")
         else:
-            alpha = st.sidebar.slider(
-                "Text Weight (α)",
-                min_value=0.0,
-                max_value=1.0,
-                value=float(alpha),
-                step=0.05,
-                help="Fused similarity = α * Sim_text + (1 - α) * Sim_image",
-            )
-            st.sidebar.caption(f"Image Weight (1 - α): **{1.0 - alpha:.2f}**")
+            st.sidebar.markdown(f"**⚖️ Text Weight (α):** `{alpha:.2f}` | **Image Weight:** `{1.0 - alpha:.2f}`")
+            st.sidebar.caption("Fixed validation optimum weighting.")
 
-    top_k = st.sidebar.slider(
-        "Candidate Retrieval Top-K",
-        min_value=5,
-        max_value=50,
-        value=20,
-        step=5,
-        help="Number of nearest neighbors to retrieve before thresholding.",
-    )
+    top_k = 20
+    st.sidebar.markdown(f"**📦 Candidate Retrieval Top-K:** `{top_k}`")
+    st.sidebar.caption("Fixed candidate window for nearest neighbor retrieval.")
 
     st.sidebar.divider()
     enable_comparison = st.sidebar.checkbox(
