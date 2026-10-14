@@ -18,7 +18,7 @@ import streamlit as st
 import pandas as pd
 from dotenv import load_dotenv
 
-from src.app_config import get_model_profile
+from src.app_config import get_model_profile, get_selected_inference_config
 
 # Force reload modules in long-running Streamlit processes to pick up newly added functions
 import importlib
@@ -155,6 +155,7 @@ with st.container(border=True):
 
 # Profile and Calibrated Defaults
 mm_profile = get_model_profile("Multimodal")
+deployed_cfg = get_selected_inference_config(strict=False)
 
 # Sidebar settings
 st.sidebar.header("⚙️ Assistant Settings")
@@ -195,12 +196,12 @@ fusion_model_choice = st.sidebar.selectbox(
 
 is_learned = "Learned" in fusion_model_choice
 fusion_type = "learned" if is_learned else "grid"
-default_th = 0.75 if is_learned else 0.55
-default_alpha = float(mm_profile.get("default_alpha", 0.55)) if is_learned else 0.60
+default_th = deployed_cfg["multimodal_threshold"] if is_learned else deployed_cfg["grid_threshold"]
+default_alpha = float(deployed_cfg["effective_alpha"]) if is_learned else float(deployed_cfg["grid_alpha"])
 
-# Fixed academic evaluation thresholds (Sliders removed to avoid demo confusion)
+# Authoritative academic evaluation thresholds dynamically loaded from configuration
 th_slider = float(default_th)
-text_th_slider = 0.60
+text_th_slider = float(deployed_cfg["text_threshold"])
 alpha_slider = default_alpha
 
 st.sidebar.markdown(f"**🎯 Multimodal Decision τ:** `{th_slider:.2f}`")
@@ -211,9 +212,12 @@ st.sidebar.caption("Calibrated baseline threshold for fine-tuned SentenceTransfo
 
 if not is_learned:
     st.sidebar.markdown(f"**⚖️ Text Weight (α):** `{alpha_slider:.2f}` | **Image Weight:** `{1.0 - alpha_slider:.2f}`")
-    st.sidebar.caption("Fixed validation optimum weighting (α=0.60).")
+    st.sidebar.caption(f"Fixed validation optimum weighting (α={alpha_slider:.2f}).")
 else:
-    st.sidebar.info("🤖 **Learned Logistic Weights (Exp 4b):**\nw_text = 9.463, w_image = 7.809, bias = -8.198")
+    w_t = deployed_cfg["weights"]["w_text"]
+    w_i = deployed_cfg["weights"]["w_image"]
+    b = deployed_cfg["bias"]
+    st.sidebar.info(f"🤖 **Learned Logistic Weights (Exp 4b):**\nw_text = {w_t:.3f}, w_image = {w_i:.3f}, bias = {b:.3f}")
     st.sidebar.caption("Supervised logistic fusion evaluated on Kaggle held-out split (Test F1 = 0.8629).")
 
 # Main Interface: Input Selection
@@ -392,8 +396,8 @@ if execute_search:
         threshold=th_slider,
         alpha=alpha_slider,
         fusion_type=fusion_type,
-        weights=mm_profile.get("weights"),
-        bias=mm_profile.get("bias"),
+        weights=deployed_cfg.get("weights"),
+        bias=deployed_cfg.get("bias"),
         text_threshold=text_th_slider,
     )
 

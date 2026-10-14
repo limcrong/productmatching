@@ -19,28 +19,15 @@ except Exception as _e:
 
 from src.config import DEFAULT_TEXT_MODEL, DEFAULT_IMAGE_MODEL, ROOT_DIR
 from src.retrieval.web_search import WebCandidate
-
-
-def score_fusion(text_similarities: np.ndarray, image_similarities: np.ndarray, alpha: float = 0.5) -> np.ndarray:
-    return alpha * text_similarities + (1.0 - alpha) * image_similarities
-
-
-def learned_fusion(
-    text_similarities: np.ndarray,
-    image_similarities: np.ndarray,
-    w_text: float,
-    w_image: float,
-    bias: float,
-) -> np.ndarray:
-    logits = w_text * text_similarities + w_image * image_similarities + bias
-    return 1.0 / (1.0 + np.exp(-logits))
+from src.models.multimodal import score_fusion, learned_fusion
+from src.app_config import get_selected_inference_config
 
 
 _CACHED_TEXT_MODEL = None
 _CACHED_VISION_MODEL = None
 
 
-def get_live_text_encoder(model_name_or_path: str = DEFAULT_TEXT_MODEL):
+def get_live_text_encoder(model_name_or_path: Optional[str] = None):
     """Loads SentenceTransformer on CPU for live inference, prioritizing local fine-tuned weights."""
     if not HAS_TORCH:
         raise RuntimeError(
@@ -49,11 +36,12 @@ def get_live_text_encoder(model_name_or_path: str = DEFAULT_TEXT_MODEL):
         )
     global _CACHED_TEXT_MODEL
     if _CACHED_TEXT_MODEL is None:
-        ft_path = ROOT_DIR / "models" / "text_ft"
+        deployed_cfg = get_selected_inference_config(strict=False)
+        ft_path = deployed_cfg.get("text_model_path") or (ROOT_DIR / "models" / "text_ft")
         if ft_path.exists() and (ft_path / "model.safetensors").exists():
             load_target = str(ft_path)
         else:
-            load_target = model_name_or_path
+            load_target = model_name_or_path or DEFAULT_TEXT_MODEL
         try:
             _CACHED_TEXT_MODEL = SentenceTransformer(load_target, device="cpu")
         except Exception:
@@ -151,12 +139,12 @@ def match_and_rank_candidates(
     query_title: str,
     query_image: Optional[Image.Image],
     candidates: List[WebCandidate],
-    threshold: float = 0.75,
-    alpha: float = 0.60,
-    fusion_type: str = "learned",
+    threshold: Optional[float] = None,
+    alpha: Optional[float] = None,
+    fusion_type: Optional[str] = None,
     weights: Optional[Dict[str, float]] = None,
     bias: Optional[float] = None,
-    text_threshold: float = 0.60,
+    text_threshold: Optional[float] = None,
 ) -> Tuple[List[WebCandidate], List[WebCandidate]]:
     """
     Computes text and image similarities using calibrated models,
@@ -165,6 +153,23 @@ def match_and_rank_candidates(
     """
     if not candidates:
         return [], []
+
+    deployed_cfg = get_selected_inference_config(strict=False)
+
+    if fusion_type is None:
+        fusion_type = deployed_cfg["fusion_type"]
+    if threshold is None:
+        threshold = deployed_cfg["multimodal_threshold"] if fusion_type == "learned" else deployed_cfg["grid_threshold"]
+    if text_threshold is None:
+        text_threshold = deployed_cfg["text_threshold"]
+    if alpha is None:
+        alpha = deployed_cfg["effective_alpha"] if fusion_type == "learned" else deployed_cfg["grid_alpha"]
+
+    # Resolve learned parameters from authoritative configuration
+    resolved_weights = weights if weights is not None else deployed_cfg.get("weights", {})
+    w_t = float(resolved_weights.get("w_text", deployed_cfg["weights"]["w_text"]))
+    w_i = float(resolved_weights.get("w_image", deployed_cfg["weights"]["w_image"]))
+    b = float(bias) if bias is not None else float(deployed_cfg["bias"])
 
     candidate_titles = [c.title for c in candidates]
     candidate_images = [c.image for c in candidates]
@@ -179,11 +184,6 @@ def match_and_rank_candidates(
     else:
         img_sims = np.zeros(len(candidates), dtype=np.float32)
         valid_img_mask = np.zeros(len(candidates), dtype=bool)
-
-    # Resolve learned parameters from final_config.json
-    w_t = float(weights.get("w_text") or 9.463388336669517) if weights else 9.463388336669517
-    w_i = float(weights.get("w_image") or 7.808722705879871) if weights else 7.808722705879871
-    b = float(bias) if bias is not None else -8.197978989829934
 
     matched = []
     rejected = []
