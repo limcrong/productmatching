@@ -146,9 +146,9 @@ with st.container(border=True):
     st.markdown(
         """
         **Process flow:**
-        1. **Stage 1 — Candidate Retrieval (Google Shopping / SerpAPI)**: Google Shopping retrieves real-world merchant listings using the product title hint. *(Note: Google Shopping supplies potential listings based on keywords, which frequently include accessories, replacement parts, and mismatched variants. It does not classify candidates as exact matches.)*
-        2. **Stage 2 — Identity Matching & Filtering (Trained Multimodal Model)**: Our trained model evaluates the user's title and image against candidate listings to filter accessories and incorrect variants.
-        3. **Stage 3 — Cross-Merchant Price Comparison**: Compares available prices strictly among retrieved and accepted product matches in a clean comparison table to highlight the lowest available offer.
+        1. **Stage 1 — Candidate Retrieval (Google Shopping / SerpAPI)**
+        2. **Stage 2 — Identity Matching & Filtering (Trained Multimodal Model)**
+        3. **Stage 3 — Cross-Merchant Price Comparison**
         
         """
     )
@@ -184,13 +184,10 @@ if "Live Web Search" in search_mode:
 country = "sg"
 
 # Learned logistic fusion as default (Fix 3)
-fusion_model_choice = st.sidebar.selectbox(
+fusion_model_choice = st.sidebar.text_input(
     "Matching & Fusion Strategy",
-    options=[
-        "🤖 Exp 4b Learned Logistic Fusion",
-        # "🎯 Linear Score Fusion (Exp 4a - Adjustable Weights, 90.7% Precision)",
-    ],
-    index=0,
+    value="🤖 Exp 4b Learned Logistic Fusion",
+    disabled=True,
     help="Learned Logistic Fusion (Exp 4b) is the validation-selected model combining text and EfficientNet-B0 embeddings via supervised logistic regression weights calibrated on Kaggle training splits.",
 )
 
@@ -268,13 +265,11 @@ else:
             help="Enter product name/model. This queries Google Shopping tab for candidate merchant offers.",
         )
     with col_engine:
-        search_engine_choice = st.selectbox(
+        search_engine_choice = st.text_input(
             "Retrieval Engine:",
-            options=["Google Shopping Tab (Prices)"
-            # , "Google Lens (Visual Matches)"
-             ],
-            index=0,
-            help="Google Shopping tab returns store listings with prices. Google Lens performs open web reverse-image matching.",
+            value="Google Shopping Tab (Prices)",
+            disabled=True,
+            help="Google Shopping tab returns store listings with prices.",
         )
 
     st.markdown("**Query Image (for Multimodal Visual Comparison):**")
@@ -741,52 +736,3 @@ if execute_search:
 
     else:
         st.warning("No candidate listings cleared the matching threshold to compare prices.")
-
-st.divider()
-
-# -----------------------------------------------------------------
-# ACADEMIC PRESENTATION WALKTHROUGH GUIDE (Part 4)
-# -----------------------------------------------------------------
-with st.expander("🎓 Academic Evaluation & Presentation Walkthrough (NUS MTech Practice Module)", expanded=False):
-    st.markdown(
-        """
-        ### 6 Core Presentation Questions Answered:
-
-        1. **What problem are we solving?**
-           E-commerce product listings for the exact same underlying product vary widely across merchants in title phrasing,
-           languages, and seller photography, while keyword queries frequently return accessory items (cases, ear pads) that
-           pollute cross-merchant price comparisons.
-
-        2. **What does Google Shopping already provide?**
-           Candidate retrieval via keyword search. It scans merchant feeds and returns potential listings with prices,
-           but does **not** perform identity verification — often returning accessories or different variants.
-
-        3. **What does our trained model add?**
-           Product identity matching and filtering. It evaluates multimodal similarity between the user's query product
-           and retrieved listings to filter out false positives and non-identical products.
-
-        4. **Why do we use both text and images?**
-           Text alone is vulnerable to keyword-stuffing (e.g. an ear pad listing that contains "Sony WH-1000XM5" in its title).
-           Visual features capture product morphology, separating headphones from cases. Combining both modalities produces
-           high precision while preserving recall.
-
-        5. **How do the text-only and multimodal models differ?**
-           - **Model A (Text-Only)**: Uses fine-tuned SentenceTransformers to measure title semantics ($\tau_{text} \approx 0.60$).
-           - **Model B (Multimodal)**: Combines text embeddings with EfficientNet-B0 visual embeddings via calibrated fusion ($\tau_{mm} \approx 0.75$).
-           - The model comparison tab directly visualizes candidates where visual evidence corrects text ambiguities.
-
-        6. **How were the models objectively evaluated?**
-           Evaluated on the Kaggle Shopee Product Matching dataset (34,250 listings partitioned with zero data leakage by `label_group`)
-           across 6 progressive experimental stages (Exp 0 to Exp 5), achieving a benchmark Mean F1 of **0.8629** on unseen test groups.
-           
-        ---
-        
-        #### 📌 Distinction Between Academic Matcher & Consumer Assistant:
-        | Dimension | Academic Dataset Matcher (Page 1) | Consumer Shopping Assistant (Page 3) |
-        | :--- | :--- | :--- |
-        | **Dataset** | Kaggle Shopee held-out test split | Real-world Google Shopping listings / Curated web cases |
-        | **Ground Truth** | `label_group` annotations available | No external ground truth on open web |
-        | **Evaluation** | Quantitative Precision, Recall, and F1 | Qualitative demonstration of filtering and price discovery |
-        | **Performance Claim** | Benchmark F1 = 0.863 on Shopee test set | Model predictions; not claimed as 86.3% precision on open web |
-        """
-    )
