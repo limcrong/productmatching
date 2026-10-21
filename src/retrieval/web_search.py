@@ -184,7 +184,7 @@ def search_google_shopping(
     query_text: str,
     api_key: str,
     country: str = "sg",
-    max_results: int = 25,
+    max_results: int = 40,
     progress_callback: Optional[Any] = None,
 ) -> List[WebCandidate]:
     """
@@ -289,7 +289,7 @@ def search_google_lens(
     image_url: str,
     api_key: str,
     country: str = "sg",
-    max_results: int = 25,
+    max_results: int = 40,
 ) -> List[WebCandidate]:
     """
     Queries Google Lens via SerpAPI with a public image URL.

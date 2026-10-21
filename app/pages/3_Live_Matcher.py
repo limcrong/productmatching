@@ -347,7 +347,7 @@ if execute_search:
                 st.stop()
             status_box.write("📷 Step 1/3: Querying Google Lens reverse-image index...")
             progress_bar.progress(30)
-            candidates = search_google_lens(image_url.strip(), api_key=api_key, country=country)
+            candidates = search_google_lens(image_url.strip(), api_key=api_key, country=country, max_results=40)
         else:
             # Default: Google Shopping Tab
             search_query = query_title.strip()
@@ -374,6 +374,7 @@ if execute_search:
                 search_query,
                 api_key=api_key,
                 country=country,
+                max_results=40,
                 progress_callback=on_progress_update,
             )
 
