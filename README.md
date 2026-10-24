@@ -2,6 +2,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.32+-red.svg)](https://streamlit.io)
+[![Streamlit Cloud](https://img.shields.io/badge/Streamlit%20Cloud-Live%20Demo-brightgreen.svg?logo=streamlit)](https://pmatching-cm.streamlit.app/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-orange.svg)](https://pytorch.org/)
 [![NUS ISS](https://img.shields.io/badge/NUS%20ISS-Pattern%20Recognition%20Systems-purple.svg)](https://www.iss.nus.edu.sg/)
 
@@ -72,61 +73,112 @@ productmatching/
 
 ---
 
-## 🚀 Quickstart Guide
+## 🌐 System Access & Evaluation Guide
 
-### 1. Environment Setup
-```powershell
+For evaluators and professors, the application can be evaluated either through the **live hosted cloud deployment** (zero configuration) or by **running it locally**.
+
+---
+
+### Option A: Live Hosted Web App (Recommended — Zero Setup)
+
+The application is deployed on Streamlit Community Cloud with all models and demo data pre-loaded:
+
+👉 **Hosted URL:** [https://pmatching-cm.streamlit.app/](https://pmatching-cm.streamlit.app/)
+
+#### Instructions for Hosted Evaluation:
+1. **Browse to the URL**: Open [https://pmatching-cm.streamlit.app/](https://pmatching-cm.streamlit.app/) in any modern web browser.
+2. **Waking the App**: Streamlit Community Cloud automatically puts inactive applications to sleep to save cloud resources. If you encounter the sleeping page:
+   - Click the blue button: **"Yes, get this app back up"**.
+3. **Wait for Startup**: Please wait approximately **1 to 2 minutes** while the cloud container boots up, prepares the runtime environment, and extracts the test thumbnails.
+4. **Interactive Demonstration**: Once loaded, use the sidebar navigation to evaluate all three modules:
+   - **🔍 Mode 1: Dataset Product Matcher** — Interactive threshold tuning, ground-truth match inspection, and side-by-side comparison across all trained models (TF-IDF, dense text transformers, fine-tuned metric learning, vision CNNs/ViTs, and multimodal fusion).
+   - **📈 Experiment Results Dashboard** — Benchmark tables, validation sweeps, and academic performance charts across Experiments 0 to 5.
+   - **🛒 Mode 2: Live Matcher POC** — Image-assisted cross-merchant price comparison using curated offline scenarios (or live web search).
+
+---
+
+### Option B: Local Setup Instructions (For Professor / Local Verification)
+
+Follow the steps below to set up and run the project locally on Windows, macOS, or Linux.
+
+#### 1. System Requirements & Prerequisites
+- **Python**: `3.10`, `3.11`, or `3.12` installed ([python.org](https://www.python.org/downloads/)).
+- **Git** and **Git LFS**: Required to download the repository and binary data artifacts (thumbnails and precomputed dense embeddings).
+  - Check if Git LFS is installed:
+    ```bash
+    git lfs --version
+    ```
+  - If not installed: install via `git-lfs` (e.g., `brew install git-lfs` on macOS, or download from [git-lfs.com](https://git-lfs.com/)).
+
+#### 2. Clone Repository & Pull Git LFS Data
+```bash
 # Clone the repository
 git clone https://github.com/limcrong/productmatching.git
 cd productmatching
 
-# Create and activate virtual environment
-python -m venv .venv
-.\.venv\Scripts\activate      # On Linux/macOS: source .venv/bin/activate
+# Initialize Git LFS and pull tracked binary artifacts
+git lfs install
+git lfs pull
+```
+> [!NOTE]
+> `git lfs pull` fetches `data/demo_thumbnails.zip` (55 MB) and precomputed evaluation vectors in `data/embeddings/` (~48 MB). These allow all models to run immediately without needing GPU training.
 
-# Install dependencies
+#### 3. Create & Activate Virtual Environment
+- **Windows (PowerShell):**
+  ```powershell
+  python -m venv .venv
+  .\.venv\Scripts\Activate.ps1
+  ```
+  *(If script execution is disabled in PowerShell, run `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process` first, or activate via Command Prompt using `.\.venv\Scripts\activate.bat`)*
+
+- **macOS / Linux:**
+  ```bash
+  python3 -m venv .venv
+  source .venv/bin/activate
+  ```
+
+#### 4. Install Dependencies
+```bash
+pip install --upgrade pip
 pip install -r requirements.txt
-
-# Configure secrets / API tokens
-copy .env.example .env        # On Linux/macOS: cp .env.example .env
 ```
 
-### 2. Data Setup & Git LFS
-
-| Data Path | Status in Git | Description / Instructions |
-| :--- | :--- | :--- |
-| **`data/processed/*.csv`** | ✅ **Tracked in Git** | Split CSVs available immediately upon `git clone`. Zero configuration required. |
-| **`experiments/results.json`** | ✅ **Tracked in Git** | Academic benchmark records across experimental stages for instant dashboard rendering. |
-| **`data/demo_thumbnails.zip`** | 📦 **Tracked via Git LFS** | All 4,880 test/demo product images (55 MB). Extracted automatically and on-demand by the app. |
-| **`data/thumbnails/`** | ⚡ **On-Demand Cache** | Extracted dynamically in milliseconds as products are rendered in the UI. |
-| **`data/embeddings/`** | ❌ Ignored (`.npy`) | Precomputed vectors. Generated via `kaggle_pipeline.py` or computed locally. |
-| **`data/shopee-product-matching.zip`** | ❌ Ignored (~1.8 GB) | Full raw dataset (optional, only if retraining vision CNNs from raw full dataset). |
+#### 5. Environment Configuration (Optional)
+Create an environment file from the provided template:
+- **Windows:** `copy .env.example .env`
+- **macOS / Linux:** `cp .env.example .env`
 
 > [!TIP]
-> **Git LFS**: When cloning to a new machine, ensure Git LFS is installed to fetch the demo thumbnails:
-> ```bash
-> git lfs install
-> git lfs pull
-> ```
+> **API Keys are NOT required for evaluation!**
+> - **Mode 1 (Dataset Product Matcher)** and **Experiment Dashboard** run 100% offline using the tracked split CSVs, cached thumbnails, and local embeddings.
+> - **Mode 2 (Live Matcher POC)** contains pre-cached **⚡ Curated Demo Scenarios** that run offline with zero external API calls.
+> - *(Optional)* A `serpapi_key` in `.env` is only necessary if you choose to perform arbitrary real-time Google Shopping web searches.
 
-### 3. Run Baseline Experiment (Exp 0: TF-IDF)
-Evaluate TF-IDF classical baseline (works immediately with tracked processed CSVs):
-```powershell
+#### 6. Launch the Streamlit Application
+```bash
+streamlit run app/app.py
+```
+The application will launch and automatically open in your default browser at:
+`http://localhost:8501`
+
+#### 7. Verify Baseline Experiment from CLI (Optional)
+To verify the classical baseline (Exp 0: TF-IDF with zero data leakage) directly via terminal:
+```bash
 python scripts/run_experiments.py --experiment 0
 ```
 
-### 4. Launch Streamlit Demo (Local)
-```powershell
-streamlit run app/app.py
-```
+---
 
-### 5. Streamlit Community Cloud Deployment
-The repository is fully configured for continuous deployment on [Streamlit Community Cloud](https://share.streamlit.io/):
-- **Repository**: `limcrong/productmatching`
-- **Branch**: `main`
-- **Main file path**: `app/app.py`
-- Automatic `sys.path` package resolution is configured in `app/app.py` and page scripts.
-- Git LFS pulls `data/demo_thumbnails.zip` automatically, and the app extracts thumbnails on-demand without startup latency.
+## 📦 Data Artifacts & Git Tracking Status
+
+| Data Path | Status in Git | Description / Instructions |
+| :--- | :--- | :--- |
+| **`data/processed/*.csv`** | ✅ **Tracked in Git** | Zero-leakage split CSVs (`train_split.csv`, `val_split.csv`, `test_demo_split.csv`). Available immediately upon `git clone`. |
+| **`experiments/results.json`** | ✅ **Tracked in Git** | Complete academic benchmark records (Exp 0 to Exp 5) for instant dashboard rendering. |
+| **`data/demo_thumbnails.zip`** | 📦 **Tracked via Git LFS** | All 4,880 test/demo product images (55 MB). Extracted automatically and on-demand by the app. |
+| **`data/embeddings/*.npy`** | 📦 **Tracked via Git LFS** | Precomputed dense embeddings for test/validation splits (`test_text_*.npy`, `test_img_*.npy`). Downloaded via `git lfs pull`. |
+| **`data/thumbnails/`** | ⚡ **On-Demand Cache** | Extracted dynamically in milliseconds as products are rendered in the UI. |
+| **`data/shopee-product-matching.zip`** | ❌ Optional / Ignored (~1.8 GB) | Full raw Shopee dataset (only required if retraining vision models or reproducing full dataset extraction from scratch). |
 
 
 ---
