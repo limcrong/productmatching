@@ -50,8 +50,6 @@ def render_sidebar_controls() -> Dict[str, Any]:
             st.sidebar.caption("Fixed validation optimum weighting.")
 
     top_k = 20
-    st.sidebar.markdown(f"**📦 Candidate Retrieval Top-K:** `{top_k}`")
-    st.sidebar.caption("Fixed candidate window for nearest neighbor retrieval.")
 
     st.sidebar.divider()
     enable_comparison = st.sidebar.checkbox(

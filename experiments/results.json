@@ -170,33 +170,5 @@
     "selected": true,
     "notes": "Supervised multimodal fusion trained on train_fusion split. Effective alpha: 0.548",
     "timestamp": "2026-10-10T03:01:57Z"
-  },
-  {
-    "experiment_id": "exp_05",
-    "name": "Experiment 5 \u2014 Final Optimization & Post-Processing",
-    "approach_type": "Optimized System",
-    "model_name": "Multimodal (Calibrated Threshold, Direct NN Match)",
-    "hyperparameters": {
-      "fusion_type": "learned",
-      "threshold": 0.75,
-      "top_k": 50
-    },
-    "validation_metrics": {
-      "mean_precision": 0.9018834478047086,
-      "mean_recall": 0.8804967996980942,
-      "mean_f1": 0.8589054325097297,
-      "num_queries": 5141
-    },
-    "test_metrics": {
-      "mean_precision": 0.8989260086070889,
-      "mean_recall": 0.8877255288782434,
-      "mean_f1": 0.8629440899621069,
-      "num_queries": 5138
-    },
-    "delta_val_f1": 0.0,
-    "delta_reference": "exp_04b",
-    "selected": true,
-    "notes": "End-to-end deployed configuration for the final demo system.",
-    "timestamp": "2026-10-10T03:01:57Z"
   }
 ]
